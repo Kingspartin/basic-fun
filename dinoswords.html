@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DinoSwords</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #f7f7f7;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  font-family: 'Courier New', monospace;
+  overflow: hidden;
+  user-select: none;
+  cursor: none;
+}
+#gameContainer {
+  position: relative;
+  width: 900px;
+  height: 400px;
+  border: 2px solid #535353;
+  background: #fff;
+  overflow: hidden;
+  cursor: none;
+}
+#score {
+  position: absolute;
+  top: 15px;
+  right: 20px;
+  font-size: 20px;
+  color: #535353;
+  z-index: 10;
+  letter-spacing: 2px;
+}
+#highScore {
+  position: absolute;
+  top: 15px;
+  right: 160px;
+  font-size: 20px;
+  color: #888;
+  z-index: 10;
+  letter-spacing: 2px;
+}
+canvas {
+  display: block;
+}
+#startScreen, #gameOverScreen {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+  background: rgba(255,255,255,0.9);
+}
+#startScreen h1 {
+  font-size: 48px;
+  color: #535353;
+  margin-bottom: 10px;
+}
+#startScreen .subtitle {
+  font-size: 16px;
+  color: #888;
+  margin-bottom: 30px;
+}
+#startScreen .instructions {
+  font-size: 14px;
+  color: #666;
+  text-align: center;
+  line-height: 1.8;
+}
+#gameOverScreen h2 {
+  font-size: 36px;
+  color: #535353;
+  margin-bottom: 10px;
+}
+#gameOverScreen .finalScore {
+  font-size: 20px;
+  color: #888;
+  margin-bottom: 20px;
+}
+#gameOverScreen .restart {
+  font-size: 16px;
+  color: #535353;
+  cursor: pointer;
+  padding: 10px 30px;
+  border: 2px solid #535353;
+  background: none;
+  font-family: 'Courier New', monospace;
+}
+#gameOverScreen .restart:hover {
+  background: #535353;
+  color: #fff;
+}
+.hidden { display: none !important; }
+#slashCanvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 5;
+}
+</style>
+</head>
+<body>
+
+<div id="gameContainer">
+  <div id="highScore">HI 00000</div>
+  <div id="score">00000</div>
+  <canvas id="gameCanvas" width="900" height="400"></canvas>
+  <canvas id="slashCanvas" width="900" height="400"></canvas>
+
+  <div id="startScreen">
+    <h1>DINOSWORDS</h1>
+    <div class="subtitle">Chrome Dino + Sword</div>
+    <div class="instructions">
+      Move your mouse to aim the sword<br>
+      Slash through cacti and pterodactyls<br>
+      Don't let obstacles hit the dino!<br><br>
+      <strong>Click anywhere to start</strong>
+    </div>
+  </div>
+
+  <div id="gameOverScreen" class="hidden">
+    <h2>GAME OVER</h2>
+    <div class="finalScore" id="finalScore">Score: 0</div>
+    <button class="restart" id="restartBtn">PLAY AGAIN</button>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const slashCanvas = document.getElementById('slashCanvas');
+const slashCtx = slashCanvas.getContext('2d');
+const container = document.getElementById('gameContainer');
+const scoreEl = document.getElementById('score');
+const highScoreEl = document.getElementById('highScore');
+const startScreen = document.getElementById('startScreen');
+const gameOverScreen = document.getElementById('gameOverScreen');
+const finalScoreEl = document.getElementById('finalScore');
+const restartBtn = document.getElementById('restartBtn');
+
+const W = 900, H = 400;
+const GROUND_Y = 330;
+const DINO_X = 120;
+
+let gameState = 'start';
+let score = 0;
+let highScore = 0;
+let speed = 6;
+let frame = 0;
+let mouseX = 450, mouseY = 200;
+let swordAngle = 0;
+let prevSwordAngle = 0;
+let swingSpeed = 0;
+let obstacles = [];
+let clouds = [];
+let groundOffset = 0;
+let particles = [];
+let slashTrails = [];
+let screenShake = 0;
+let nightMode = false;
+
+const dino = {
+  x: DINO_X,
+  y: GROUND_Y,
+  w: 44,
+  h: 47,
+  legFrame: 0,
+  blinkTimer: 0,
+  isDucking: false
+};
+
+const sword = {
+  length: 70,
+  handleLength: 15,
+  pivotX: 0,
+  pivotY: 0,
+  tipX: 0,
+  tipY: 0,
+  prevTipX: 0,
+  prevTipY: 0
+};
+
+function drawDino() {
+  const x = dino.x;
+  const y = dino.y;
+  ctx.save();
+
+  const bodyColor = nightMode ? '#aaa' : '#535353';
+  const eyeColor = nightMode ? '#222' : '#fff';
+  ctx.fillStyle = bodyColor;
+
+  ctx.fillRect(x, y - 40, 30, 35);
+  ctx.fillRect(x + 20, y - 47, 24, 20);
+
+  ctx.fillStyle = eyeColor;
+  ctx.fillRect(x + 34, y - 43, 5, 5);
+
+  ctx.fillStyle = bodyColor;
+  ctx.fillRect(x + 5, y - 20, 8, 12);
+
+  const legOffset = Math.sin(frame * 0.3) * 6;
+  if (speed > 0) {
+    ctx.fillRect(x + 5, y - 5, 8, 5 + legOffset);
+    ctx.fillRect(x + 18, y - 5, 8, 5 - legOffset);
+  } else {
+    ctx.fillRect(x + 5, y - 5, 8, 5);
+    ctx.fillRect(x + 18, y - 5, 8, 5);
+  }
+
+  ctx.fillRect(x - 5, y - 30, 10, 5);
+
+  ctx.restore();
+}
+
+function drawSword() {
+  const pivotX = dino.x + 22;
+  const pivotY = dino.y - 25;
+
+  const dx = mouseX - pivotX;
+  const dy = mouseY - pivotY;
+  swordAngle = Math.atan2(dy, dx);
+
+  swingSpeed = Math.abs(swordAngle - prevSwordAngle);
+  prevSwordAngle = swordAngle;
+
+  const tipX = pivotX + Math.cos(swordAngle) * sword.length;
+  const tipY = pivotY + Math.sin(swordAngle) * sword.length;
+  const handleX = pivotX - Math.cos(swordAngle) * sword.handleLength;
+  const handleY = pivotY - Math.sin(swordAngle) * sword.handleLength;
+
+  sword.prevTipX = sword.tipX;
+  sword.prevTipY = sword.tipY;
+  sword.pivotX = pivotX;
+  sword.pivotY = pivotY;
+  sword.tipX = tipX;
+  sword.tipY = tipY;
+
+  if (gameState === 'playing' && swingSpeed > 0.02) {
+    slashTrails.push({
+      x1: sword.prevTipX || tipX,
+      y1: sword.prevTipY || tipY,
+      x2: tipX,
+      y2: tipY,
+      alpha: 0.8,
+      width: Math.min(swingSpeed * 30, 8)
+    });
+  }
+
+  ctx.save();
+  ctx.lineCap = 'round';
+
+  ctx.strokeStyle = nightMode ? '#666' : '#8B4513';
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.moveTo(handleX, handleY);
+  ctx.lineTo(pivotX, pivotY);
+  ctx.stroke();
+
+  ctx.strokeStyle = '#888';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(pivotX - Math.cos(swordAngle + Math.PI/2) * 8, pivotY - Math.sin(swordAngle + Math.PI/2) * 8);
+  ctx.lineTo(pivotX + Math.cos(swordAngle + Math.PI/2) * 8, pivotY + Math.sin(swordAngle + Math.PI/2) * 8);
+  ctx.stroke();
+
+  const gradient = ctx.createLinearGradient(pivotX, pivotY, tipX, tipY);
+  gradient.addColorStop(0, '#C0C0C0');
+  gradient.addColorStop(0.5, '#E8E8E8');
+  gradient.addColorStop(1, '#A0A0A0');
+  ctx.strokeStyle = gradient;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(pivotX, pivotY);
+  ctx.lineTo(tipX, tipY);
+  ctx.stroke();
+
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pivotX + Math.cos(swordAngle) * 5, pivotY + Math.sin(swordAngle) * 5);
+  ctx.lineTo(tipX - Math.cos(swordAngle) * 5, tipY - Math.sin(swordAngle) * 5);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawSlashTrails() {
+  slashCtx.clearRect(0, 0, W, H);
+  for (let i = slashTrails.length - 1; i >= 0; i--) {
+    const t = slashTrails[i];
+    slashCtx.save();
+    slashCtx.globalAlpha = t.alpha;
+    slashCtx.strokeStyle = '#fff';
+    slashCtx.lineWidth = t.width;
+    slashCtx.lineCap = 'round';
+    slashCtx.shadowColor = nightMode ? '#88f' : '#ff0';
+    slashCtx.shadowBlur = 10;
+    slashCtx.beginPath();
+    slashCtx.moveTo(t.x1, t.y1);
+    slashCtx.lineTo(t.x2, t.y2);
+    slashCtx.stroke();
+    slashCtx.restore();
+    t.alpha -= 0.06;
+    if (t.alpha <= 0) slashTrails.splice(i, 1);
+  }
+}
+
+function spawnObstacle() {
+  const types = ['cactusSmall', 'cactusTall', 'cactusGroup'];
+  if (score > 300) types.push('pterodactyl');
+
+  const type = types[Math.floor(Math.random() * types.length)];
+
+  const obs = {
+    type,
+    x: W + 50,
+    slashed: false,
+    slashParts: [],
+    health: 1
+  };
+
+  switch(type) {
+    case 'cactusSmall':
+      obs.y = GROUND_Y;
+      obs.w = 18;
+      obs.h = 35;
+      break;
+    case 'cactusTall':
+      obs.y = GROUND_Y;
+      obs.w = 22;
+      obs.h = 55;
+      break;
+    case 'cactusGroup':
+      obs.y = GROUND_Y;
+      obs.w = 50;
+      obs.h = 40;
+      break;
+    case 'pterodactyl':
+      obs.y = GROUND_Y - 60 - Math.random() * 80;
+      obs.w = 46;
+      obs.h = 30;
+      obs.wingFrame = 0;
+      break;
+  }
+
+  obstacles.push(obs);
+}
+
+function drawCactus(obs) {
+  if (obs.slashed) return;
+
+  const x = obs.x;
+  const y = obs.y;
+  const color = nightMode ? '#4a4' : '#2d5a27';
+
+  ctx.fillStyle = color;
+
+  if (obs.type === 'cactusSmall') {
+    ctx.fillRect(x, y - 35, 18, 35);
+    ctx.fillRect(x - 8, y - 25, 10, 6);
+    ctx.fillRect(x + 16, y - 18, 10, 6);
+    ctx.fillRect(x - 8, y - 25, 6, 15);
+    ctx.fillRect(x + 20, y - 18, 6, 12);
+  } else if (obs.type === 'cactusTall') {
+    ctx.fillRect(x, y - 55, 22, 55);
+    ctx.fillRect(x - 10, y - 40, 12, 6);
+    ctx.fillRect(x + 20, y - 30, 12, 6);
+    ctx.fillRect(x - 10, y - 40, 6, 20);
+    ctx.fillRect(x + 26, y - 30, 6, 18);
+  } else if (obs.type === 'cactusGroup') {
+    ctx.fillRect(x, y - 35, 16, 35);
+    ctx.fillRect(x + 17, y - 40, 16, 40);
+    ctx.fillRect(x + 34, y - 30, 16, 30);
+    ctx.fillRect(x - 6, y - 22, 8, 5);
+    ctx.fillRect(x - 6, y - 22, 5, 12);
+    ctx.fillRect(x + 42, y - 20, 8, 5);
+    ctx.fillRect(x + 45, y - 20, 5, 10);
+  }
+}
+
+function drawPterodactyl(obs) {
+  if (obs.slashed) return;
+
+  const x = obs.x;
+  const y = obs.y;
+  const color = nightMode ? '#888' : '#535353';
+
+  ctx.fillStyle = color;
+
+  ctx.fillRect(x + 5, y - 5, 30, 10);
+  ctx.fillRect(x + 35, y - 3, 11, 6);
+
+  obs.wingFrame = (obs.wingFrame || 0) + 0.1;
+  const wingY = Math.sin(obs.wingFrame * 3) * 10;
+
+  ctx.beginPath();
+  ctx.moveTo(x + 10, y);
+  ctx.lineTo(x, y - 15 + wingY);
+  ctx.lineTo(x + 20, y);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(x + 15, y + 5);
+  ctx.lineTo(x + 5, y + 15 - wingY * 0.5);
+  ctx.lineTo(x + 25, y + 5);
+  ctx.fill();
+}
+
+function drawSlashedParts() {
+  for (const obs of obstacles) {
+    if (!obs.slashed) continue;
+    for (const part of obs.slashParts) {
+      ctx.save();
+      ctx.translate(part.x, part.y);
+      ctx.rotate(part.rotation);
+      ctx.globalAlpha = part.alpha;
+      ctx.fillStyle = obs.type === 'pterodactyl'
+        ? (nightMode ? '#888' : '#535353')
+        : (nightMode ? '#4a4' : '#2d5a27');
+      ctx.fillRect(-part.w/2, -part.h/2, part.w, part.h);
+      ctx.restore();
+
+      part.x += part.vx;
+      part.y += part.vy;
+      part.vy += 0.5;
+      part.rotation += part.vr;
+      part.alpha -= 0.015;
+    }
+    obs.slashParts = obs.slashParts.filter(p => p.alpha > 0);
+  }
+}
+
+function spawnSlashParts(obs) {
+  const cx = obs.x + obs.w / 2;
+  const cy = (obs.type === 'pterodactyl' ? obs.y : obs.y - obs.h / 2);
+  const count = 6 + Math.floor(Math.random() * 4);
+
+  for (let i = 0; i < count; i++) {
+    obs.slashParts.push({
+      x: cx + (Math.random() - 0.5) * obs.w,
+      y: cy + (Math.random() - 0.5) * obs.h,
+      w: 5 + Math.random() * 12,
+      h: 5 + Math.random() * 12,
+      vx: (Math.random() - 0.5) * 8,
+      vy: -2 - Math.random() * 6,
+      rotation: Math.random() * Math.PI * 2,
+      vr: (Math.random() - 0.5) * 0.3,
+      alpha: 1
+    });
+  }
+}
+
+function spawnParticles(x, y, count, color) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 10,
+      vy: -Math.random() * 8,
+      size: 2 + Math.random() * 4,
+      alpha: 1,
+      color: color || (nightMode ? '#ff8' : '#ff0')
+    });
+  }
+}
+
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.3;
+    p.alpha -= 0.03;
+    if (p.alpha <= 0) particles.splice(i, 1);
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.save();
+    ctx.globalAlpha = p.alpha;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - p.size/2, p.y - p.size/2, p.size, p.size);
+    ctx.restore();
+  }
+}
+
+function lineIntersectsRect(x1, y1, x2, y2, rx, ry, rw, rh) {
+  function lineIntersectsLine(a1x, a1y, a2x, a2y, b1x, b1y, b2x, b2y) {
+    const d = (b2y - b1y) * (a2x - a1x) - (b2x - b1x) * (a2y - a1y);
+    if (d === 0) return false;
+    const ua = ((b2x - b1x) * (a1y - b1y) - (b2y - b1y) * (a1x - b1x)) / d;
+    const ub = ((a2x - a1x) * (a1y - b1y) - (a2y - a1y) * (a1x - b1x)) / d;
+    return ua >= 0 && ua <= 1 && ub >= 0 && ub <= 1;
+  }
+
+  return lineIntersectsLine(x1, y1, x2, y2, rx, ry, rx + rw, ry) ||
+         lineIntersectsLine(x1, y1, x2, y2, rx + rw, ry, rx + rw, ry + rh) ||
+         lineIntersectsLine(x1, y1, x2, y2, rx + rw, ry + rh, rx, ry + rh) ||
+         lineIntersectsLine(x1, y1, x2, y2, rx, ry + rh, rx, ry);
+}
+
+function checkSwordCollision(obs) {
+  if (obs.slashed) return false;
+  if (swingSpeed < 0.04) return false;
+
+  let rx = obs.x;
+  let ry = obs.type === 'pterodactyl' ? obs.y - obs.h/2 : obs.y - obs.h;
+  let rw = obs.w;
+  let rh = obs.h;
+
+  return lineIntersectsRect(
+    sword.pivotX, sword.pivotY,
+    sword.tipX, sword.tipY,
+    rx, ry, rw, rh
+  );
+}
+
+function checkDinoCollision(obs) {
+  if (obs.slashed) return false;
+
+  let ox = obs.x + 4;
+  let oy = obs.type === 'pterodactyl' ? obs.y - obs.h/2 + 4 : obs.y - obs.h + 4;
+  let ow = obs.w - 8;
+  let oh = obs.h - 8;
+
+  let dx = dino.x + 5;
+  let dy = dino.y - 42;
+  let dw = 28;
+  let dh = 42;
+
+  return dx < ox + ow && dx + dw > ox && dy < oy + oh && dy + dh > oy;
+}
+
+function drawGround() {
+  const groundColor = nightMode ? '#444' : '#535353';
+  ctx.fillStyle = groundColor;
+  ctx.fillRect(0, GROUND_Y, W, 2);
+
+  ctx.fillStyle = nightMode ? '#333' : '#ddd';
+  for (let i = 0; i < W + 20; i += 30) {
+    const xPos = ((i - groundOffset % 30) + W) % W;
+    ctx.fillRect(xPos, GROUND_Y + 8, 15, 1);
+    ctx.fillRect(xPos + 7, GROUND_Y + 15, 10, 1);
+  }
+}
+
+function drawClouds() {
+  const cloudColor = nightMode ? '#333' : '#e8e8e8';
+  ctx.fillStyle = cloudColor;
+  for (const c of clouds) {
+    ctx.fillRect(c.x, c.y, 46, 14);
+    ctx.fillRect(c.x + 10, c.y - 8, 26, 10);
+    ctx.fillRect(c.x + 5, c.y + 12, 20, 6);
+  }
+}
+
+function updateClouds() {
+  for (const c of clouds) {
+    c.x -= speed * 0.3;
+  }
+  clouds = clouds.filter(c => c.x > -60);
+  if (Math.random() < 0.005) {
+    clouds.push({ x: W + 20, y: 40 + Math.random() * 100 });
+  }
+}
+
+function drawStars() {
+  if (!nightMode) return;
+  ctx.fillStyle = '#fff';
+  for (let i = 0; i < 30; i++) {
+    const sx = (i * 137 + frame * 0.1) % W;
+    const sy = (i * 97) % (GROUND_Y - 50);
+    const size = (i % 3) + 1;
+    ctx.globalAlpha = 0.3 + Math.sin(frame * 0.05 + i) * 0.3;
+    ctx.fillRect(sx, sy, size, size);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawMoon() {
+  if (!nightMode) return;
+  ctx.fillStyle = '#ddd';
+  ctx.beginPath();
+  ctx.arc(750, 60, 25, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = nightMode ? '#111' : '#fff';
+  ctx.beginPath();
+  ctx.arc(760, 55, 20, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawCrosshair() {
+  ctx.save();
+  ctx.strokeStyle = nightMode ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.2)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(mouseX, mouseY, 12, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(mouseX - 16, mouseY);
+  ctx.lineTo(mouseX - 8, mouseY);
+  ctx.moveTo(mouseX + 8, mouseY);
+  ctx.lineTo(mouseX + 16, mouseY);
+  ctx.moveTo(mouseX, mouseY - 16);
+  ctx.lineTo(mouseX, mouseY - 8);
+  ctx.moveTo(mouseX, mouseY + 8);
+  ctx.lineTo(mouseX, mouseY + 16);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function formatScore(s) {
+  return String(Math.floor(s)).padStart(5, '0');
+}
+
+let obstacleTimer = 0;
+const MIN_OBSTACLE_INTERVAL = 50;
+
+function update() {
+  if (gameState !== 'playing') return;
+
+  frame++;
+  score += speed * 0.05;
+  speed = 6 + Math.floor(score / 100) * 0.5;
+  if (speed > 16) speed = 16;
+
+  nightMode = Math.floor(score / 700) % 2 === 1;
+
+  groundOffset += speed;
+
+  scoreEl.textContent = formatScore(score);
+  if (score > highScore) {
+    highScore = score;
+    highScoreEl.textContent = 'HI ' + formatScore(highScore);
+  }
+
+  updateClouds();
+
+  obstacleTimer++;
+  if (obstacleTimer > MIN_OBSTACLE_INTERVAL + Math.random() * 60) {
+    spawnObstacle();
+    obstacleTimer = 0;
+  }
+
+  for (const obs of obstacles) {
+    if (!obs.slashed) {
+      obs.x -= speed;
+    } else {
+      for (const part of obs.slashParts) {
+        part.x -= speed * 0.3;
+      }
+    }
+
+    if (!obs.slashed && checkSwordCollision(obs)) {
+      obs.slashed = true;
+      spawnSlashParts(obs);
+      const cx = obs.x + obs.w / 2;
+      const cy = obs.type === 'pterodactyl' ? obs.y : obs.y - obs.h / 2;
+      spawnParticles(cx, cy, 12);
+      screenShake = 5;
+      score += 20;
+    }
+
+    if (checkDinoCollision(obs)) {
+      gameState = 'gameover';
+      gameOverScreen.classList.remove('hidden');
+      finalScoreEl.textContent = 'Score: ' + Math.floor(score);
+      spawnParticles(dino.x + 15, dino.y - 20, 20, '#f44');
+      screenShake = 10;
+    }
+  }
+
+  obstacles = obstacles.filter(o => o.x > -100 && (o.slashParts.length > 0 || !o.slashed || o.x > -60));
+  obstacles = obstacles.filter(o => {
+    if (o.slashed && o.slashParts.length === 0) return false;
+    if (o.x < -100) return false;
+    return true;
+  });
+
+  updateParticles();
+
+  if (screenShake > 0) screenShake -= 0.5;
+}
+
+function draw() {
+  ctx.save();
+
+  if (screenShake > 0) {
+    ctx.translate(
+      (Math.random() - 0.5) * screenShake * 2,
+      (Math.random() - 0.5) * screenShake * 2
+    );
+  }
+
+  ctx.fillStyle = nightMode ? '#111' : '#fff';
+  ctx.fillRect(0, 0, W, H);
+
+  drawStars();
+  drawMoon();
+  drawClouds();
+  drawGround();
+
+  for (const obs of obstacles) {
+    if (obs.type === 'pterodactyl') {
+      drawPterodactyl(obs);
+    } else {
+      drawCactus(obs);
+    }
+  }
+
+  drawSlashedParts();
+  drawDino();
+  drawSword();
+  drawParticles();
+  drawCrosshair();
+
+  ctx.restore();
+
+  drawSlashTrails();
+
+  scoreEl.style.color = nightMode ? '#ddd' : '#535353';
+  highScoreEl.style.color = nightMode ? '#888' : '#888';
+}
+
+function gameLoop() {
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+function startGame() {
+  score = 0;
+  speed = 6;
+  frame = 0;
+  obstacles = [];
+  particles = [];
+  slashTrails = [];
+  clouds = [];
+  groundOffset = 0;
+  obstacleTimer = 0;
+  nightMode = false;
+  screenShake = 0;
+  gameState = 'playing';
+  startScreen.classList.add('hidden');
+  gameOverScreen.classList.add('hidden');
+}
+
+container.addEventListener('mousemove', (e) => {
+  const rect = container.getBoundingClientRect();
+  mouseX = (e.clientX - rect.left) * (W / rect.width);
+  mouseY = (e.clientY - rect.top) * (H / rect.height);
+});
+
+container.addEventListener('click', () => {
+  if (gameState === 'start') {
+    startGame();
+  }
+});
+
+restartBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  startGame();
+});
+
+container.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  const rect = container.getBoundingClientRect();
+  const touch = e.touches[0];
+  mouseX = (touch.clientX - rect.left) * (W / rect.width);
+  mouseY = (touch.clientY - rect.top) * (H / rect.height);
+}, { passive: false });
+
+container.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  if (gameState === 'start') {
+    startGame();
+  } else if (gameState === 'gameover') {
+    startGame();
+  }
+  const rect = container.getBoundingClientRect();
+  const touch = e.touches[0];
+  mouseX = (touch.clientX - rect.left) * (W / rect.width);
+  mouseY = (touch.clientY - rect.top) * (H / rect.height);
+}, { passive: false });
+
+for (let i = 0; i < 5; i++) {
+  clouds.push({ x: Math.random() * W, y: 40 + Math.random() * 100 });
+}
+
+gameLoop();
+</script>
+</body>
+</html>
