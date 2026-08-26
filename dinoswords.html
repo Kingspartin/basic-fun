@@ -211,70 +211,333 @@ function showWeaponName(k){
 
 function fmtScore(s){return String(Math.floor(s)).padStart(5,'0')}
 
-// dino pixel drawing
+// bitmap rendering helper — bmp is array of strings, each char '1' = filled pixel
+function renderBitmap(bmp,bx,by,ps,color,flipX){
+  X.fillStyle=color;
+  const rows=bmp.length,cols=bmp[0].length;
+  for(let r=0;r<rows;r++){
+    const row=bmp[r];
+    for(let c=0;c<cols;c++){
+      if(row[c]==='1'){
+        const px=flipX?bx+(cols-1-c)*ps:bx+c*ps;
+        X.fillRect(px,by+r*ps,ps,ps);
+      }
+    }
+  }
+}
+
+// T-Rex bitmap frames (each row is a string of 0/1, pixel size 3)
+const DINO_RUN1=[
+  '000001111100',
+  '000001111111',
+  '000001111111',
+  '000001111100',
+  '000001111000',
+  '011111111110',
+  '111111111100',
+  '111111111100',
+  '011111111000',
+  '001111110000',
+  '001111100000',
+  '000110110000',
+  '000100010000',
+  '000100001000',
+];
+const DINO_RUN2=[
+  '000001111100',
+  '000001111111',
+  '000001111111',
+  '000001111100',
+  '000001111000',
+  '011111111110',
+  '111111111100',
+  '111111111100',
+  '011111111000',
+  '001111110000',
+  '001111100000',
+  '000110110000',
+  '000010010000',
+  '001000100000',
+];
+const DINO_STAND=[
+  '000001111100',
+  '000001111111',
+  '000001111111',
+  '000001111100',
+  '000001111000',
+  '011111111110',
+  '111111111100',
+  '111111111100',
+  '011111111000',
+  '001111110000',
+  '001111100000',
+  '000110110000',
+  '000110011000',
+  '000110011000',
+];
+const DINO_DUCK=[
+  '111100000000000',
+  '111111000000000',
+  '111111000000000',
+  '111100000000000',
+  '111111111111110',
+  '111111111111100',
+  '011111111111000',
+  '001000001000000',
+  '001000000100000',
+];
+const DINO_DEAD=[
+  '000001111100',
+  '000001101111',
+  '000001111111',
+  '000001111100',
+  '000001111000',
+  '011111111110',
+  '111111111100',
+  '111111111100',
+  '011111111000',
+  '001111110000',
+  '001111100000',
+  '000110110000',
+  '000110011000',
+  '000110011000',
+];
+
+const PS=3; // pixel size for dino
+
 function drawDino(){
   const x=dino.x,y=dino.y;
   const bc=night?'#c8c8c8':'#535353';
   const ec=night?'#333':'#fff';
   X.save();
+  let color=bc;
   if(dino.purpleTint>0){
     const r=0x53+Math.floor(dino.purpleTint*0.6);
     const g=0x53-Math.floor(dino.purpleTint*0.3);
     const b=0x53+Math.floor(dino.purpleTint*0.8);
-    X.fillStyle=`rgb(${Math.min(r,220)},${Math.max(g,30)},${Math.min(b,220)})`;
-  }else{
-    X.fillStyle=bc;
+    color=`rgb(${Math.min(r,220)},${Math.max(g,30)},${Math.min(b,220)})`;
   }
   if(dino.ducking){
-    // ducking: wider, shorter
-    X.fillRect(x-10,y-18,50,16);
-    X.fillRect(x+30,y-22,20,10);
-    // eye
-    X.fillStyle=ec;X.fillRect(x+42,y-20,4,4);
-    X.fillStyle=dino.purpleTint>0?X.fillStyle:bc;
-    // legs
-    const lo=Math.sin(fr*0.35)*4;
-    X.fillRect(x,y-2,7,2+lo);
-    X.fillRect(x+14,y-2,7,2-lo);
-    // tail
-    X.fillRect(x-15,y-14,8,4);
+    const bmp=DINO_DUCK;
+    const bw=bmp[0].length*PS, bh=bmp.length*PS;
+    renderBitmap(bmp,x-6,y-bh,PS,color);
   }else{
-    // body
-    X.fillRect(x,y-36,26,30);
-    // head
-    X.fillRect(x+18,y-44,22,18);
-    // eye
-    const prevFill=X.fillStyle;
-    X.fillStyle=ec;
-    if(dino.dead){
-      // X eye
-      X.fillRect(x+32,y-40,3,3);X.fillRect(x+34,y-38,3,3);
-      X.fillRect(x+34,y-40,3,3);X.fillRect(x+32,y-38,3,3);
-    }else{
-      X.fillRect(x+32,y-40,4,4);
+    let bmp;
+    if(dino.dead){bmp=DINO_DEAD;}
+    else if(dino.jumping||dino.y<GY){bmp=DINO_STAND;}
+    else{bmp=(Math.floor(fr*0.15)%2===0)?DINO_RUN1:DINO_RUN2;}
+    const bw=bmp[0].length*PS, bh=bmp.length*PS;
+    renderBitmap(bmp,x-4,y-bh,PS,color);
+    // eye highlight
+    if(!dino.dead){
+      X.fillStyle=ec;
+      X.fillRect(x-4+9*PS,y-bh+1*PS,PS,PS);
     }
-    X.fillStyle=prevFill;
-    // arms
-    X.fillRect(x+2,y-18,7,10);
-    // legs
-    const lo=Math.sin(fr*0.35)*5;
-    if(dino.jumping||dino.y<GY){
-      X.fillRect(x+4,y-6,7,6);
-      X.fillRect(x+16,y-6,7,6);
-    }else{
-      X.fillRect(x+4,y-6,7,6+lo);
-      X.fillRect(x+16,y-6,7,6-lo);
-    }
-    // tail
-    X.fillRect(x-8,y-28,10,5);
     // hat (bat)
     if(dino.hatCap){
       X.fillStyle=night?'#aaa':'#535353';
-      X.fillRect(x+14,y-48,24,4);
-      X.fillRect(x+18,y-52,16,4);
+      X.fillRect(x+2,y-bh-4,30,4);
+      X.fillRect(x+6,y-bh-8,22,4);
     }
   }
   X.restore();
+}
+
+// weapon sprite bitmaps (small ~8x8 to 10x10 pixel art)
+const WEAPON_SPRITES={
+Q:[ // sword
+  '00100',
+  '00100',
+  '00100',
+  '00100',
+  '01110',
+  '00100',
+  '00100',
+],
+W:[ // handgun
+  '011100',
+  '111111',
+  '011100',
+  '001000',
+],
+E:[ // flip flop
+  '01110',
+  '11111',
+  '11111',
+  '01010',
+],
+R:[ // flamethrower
+  '100000',
+  '111100',
+  '111111',
+  '111100',
+  '100000',
+],
+T:[ // shuriken
+  '0010100',
+  '0011100',
+  '1111111',
+  '0011100',
+  '0010100',
+],
+Y:[ // scream mouth
+  '01110',
+  '10001',
+  '10001',
+  '10001',
+  '01110',
+],
+U:[ // chainsaw
+  '00001110',
+  '11111111',
+  '11111111',
+  '11100000',
+],
+I:[ // helicopter
+  '01111110',
+  '00011000',
+  '01111110',
+  '01111110',
+  '00001100',
+],
+O:[ // halberd
+  '001100',
+  '001100',
+  '011110',
+  '001100',
+  '001100',
+  '001100',
+  '001100',
+],
+P:[ // flying kick (boot)
+  '11000',
+  '11000',
+  '11100',
+  '11111',
+  '01111',
+],
+A:[ // cigarette
+  '1000',
+  '1110',
+  '1110',
+  '1110',
+  '1110',
+  '0110',
+],
+S:[ // rifle
+  '00010000',
+  '01111110',
+  '11111111',
+  '00110000',
+],
+D:[ // double-edge sword
+  '00100',
+  '01110',
+  '00100',
+  '00100',
+  '00100',
+  '01110',
+  '00100',
+],
+F:[ // F key / tombstone
+  '01110',
+  '10001',
+  '11110',
+  '10000',
+  '10001',
+  '01110',
+],
+G:[ // holy water vial
+  '0110',
+  '0110',
+  '1111',
+  '1111',
+  '1111',
+  '0110',
+],
+H:[ // portal gun
+  '00011',
+  '11111',
+  '11111',
+  '01110',
+  '01000',
+],
+J:[ // grenade
+  '0110',
+  '0010',
+  '0110',
+  '1111',
+  '1111',
+  '0110',
+],
+K:[ // downers pill
+  '01110',
+  '11111',
+  '11011',
+  '11111',
+  '01110',
+],
+L:[ // uppers pill
+  '01110',
+  '11111',
+  '11111',
+  '11011',
+  '01110',
+],
+Z:[ // meteor
+  '011110',
+  '111111',
+  '111111',
+  '011110',
+],
+X:[ // laser gun
+  '000111',
+  '111111',
+  '111111',
+  '001100',
+],
+C:[ // chem warfare plane
+  '001100',
+  '011110',
+  '111111',
+  '001100',
+],
+V:[ // baseball bat
+  '0010',
+  '0010',
+  '0010',
+  '0010',
+  '0110',
+  '1111',
+],
+B:[ // bow & arrow
+  '01001',
+  '01010',
+  '11100',
+  '01010',
+  '01001',
+],
+N:[ // tank
+  '00111100',
+  '01111110',
+  '11111111',
+  '01010100',
+],
+M:[ // hammer
+  '11110',
+  '11110',
+  '00100',
+  '00100',
+  '00100',
+  '00100',
+],
+};
+
+function drawWeaponSprite(key,cx,cy,ps,color){
+  const bmp=WEAPON_SPRITES[key];
+  if(!bmp)return;
+  const bw=bmp[0].length*ps,bh=bmp.length*ps;
+  renderBitmap(bmp,cx-bw/2,cy-bh/2,ps,color);
 }
 
 function drawVehicle(){
@@ -410,17 +673,17 @@ function drawPickups(){
     p.bob+=0.06;
     const by=Math.sin(p.bob)*5;
     const bc=night?'#c8c8c8':'#535353';
-    // glow
+    const cx=p.x+10,cy=p.y+by;
     X.save();
-    X.fillStyle=night?'rgba(200,200,200,0.08)':'rgba(83,83,83,0.06)';
-    X.beginPath();X.arc(p.x+10,p.y+by,18,0,Math.PI*2);X.fill();
-    // box
-    X.strokeStyle=bc;X.lineWidth=2;
-    X.strokeRect(p.x,p.y+by-12,20,20);
-    // letter
-    X.fillStyle=bc;X.font='bold 11px "Press Start 2P",monospace';
-    X.textAlign='center';X.textBaseline='middle';
-    X.fillText(p.k,p.x+10,p.y+by);
+    // glow circle
+    X.fillStyle=night?'rgba(200,200,200,0.1)':'rgba(83,83,83,0.07)';
+    X.beginPath();X.arc(cx,cy,18,0,Math.PI*2);X.fill();
+    // weapon sprite
+    drawWeaponSprite(p.k,cx,cy-2,3,bc);
+    // small key label below
+    X.fillStyle=bc;X.font='bold 7px "Press Start 2P",monospace';
+    X.textAlign='center';X.textBaseline='top';
+    X.fillText(p.k,cx,cy+12);
     X.restore();
   }
 }
@@ -702,8 +965,8 @@ function killDino(){
 function hitboxDino(){
   if(vehicleMode==='heli')return{x:dino.x-5,y:dino.y-12,w:55,h:20};
   if(vehicleMode==='tank')return{x:dino.x-15,y:dino.y-28,w:65,h:28};
-  if(dino.ducking)return{x:dino.x-10,y:dino.y-18,w:48,h:18};
-  return{x:dino.x+2,y:dino.y-40,w:36,h:40};
+  if(dino.ducking)return{x:dino.x-6,y:dino.y-27,w:45,h:27};
+  return{x:dino.x-4,y:dino.y-42,w:36,h:42};
 }
 
 function checkCol(){
