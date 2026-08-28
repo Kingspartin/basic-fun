@@ -307,35 +307,50 @@ const PS=3; // pixel size for dino
 
 function drawDino(){
   const x=dino.x,y=dino.y;
-  const bc=night?'#c8c8c8':'#535353';
-  const ec=night?'#333':'#fff';
+  const bodyCol=night?'#5a8a5a':'#3a7a3a';
+  const bellyCol=night?'#7aaa7a':'#5a9a5a';
+  const ec=night?'#111':'#fff';
   X.save();
-  let color=bc;
+  let color=bodyCol;
   if(dino.purpleTint>0){
-    const r=0x53+Math.floor(dino.purpleTint*0.6);
-    const g=0x53-Math.floor(dino.purpleTint*0.3);
-    const b=0x53+Math.floor(dino.purpleTint*0.8);
-    color=`rgb(${Math.min(r,220)},${Math.max(g,30)},${Math.min(b,220)})`;
+    const t=dino.purpleTint/255;
+    const r=Math.floor(0x3a*(1-t)+0xaa*t);
+    const g=Math.floor(0x7a*(1-t)+0x33*t);
+    const b=Math.floor(0x3a*(1-t)+0xcc*t);
+    color=`rgb(${r},${g},${b})`;
   }
   if(dino.ducking){
     const bmp=DINO_DUCK;
-    const bw=bmp[0].length*PS, bh=bmp.length*PS;
+    const bh=bmp.length*PS;
     renderBitmap(bmp,x-6,y-bh,PS,color);
+    // belly highlight on duck
+    X.fillStyle=dino.purpleTint>0?color:bellyCol;
+    X.fillRect(x-6+4*PS,y-bh+4*PS,8*PS,PS);
+    X.fillRect(x-6+4*PS,y-bh+5*PS,8*PS,PS);
   }else{
     let bmp;
     if(dino.dead){bmp=DINO_DEAD;}
     else if(dino.jumping||dino.y<GY){bmp=DINO_STAND;}
     else{bmp=(Math.floor(fr*0.15)%2===0)?DINO_RUN1:DINO_RUN2;}
-    const bw=bmp[0].length*PS, bh=bmp.length*PS;
+    const bh=bmp.length*PS;
     renderBitmap(bmp,x-4,y-bh,PS,color);
-    // eye highlight
+    // belly highlight (rows 6-8, cols 1-5)
+    if(dino.purpleTint<=0){
+      X.fillStyle=bellyCol;
+      for(let r=6;r<=8;r++){
+        for(let c=1;c<=5;c++){
+          if(bmp[r]&&bmp[r][c]==='1') X.fillRect(x-4+c*PS,y-bh+r*PS,PS,PS);
+        }
+      }
+    }
+    // eye
     if(!dino.dead){
       X.fillStyle=ec;
       X.fillRect(x-4+9*PS,y-bh+1*PS,PS,PS);
     }
     // hat (bat)
     if(dino.hatCap){
-      X.fillStyle=night?'#aaa':'#535353';
+      X.fillStyle=night?'#aa4444':'#cc3333';
       X.fillRect(x+2,y-bh-4,30,4);
       X.fillRect(x+6,y-bh-8,22,4);
     }
@@ -533,43 +548,73 @@ M:[ // hammer
 ],
 };
 
-function drawWeaponSprite(key,cx,cy,ps,color){
+const WPN_COLORS={
+  Q:['#aab0b8','#c8cdd4'], W:['#444','#666'],   E:['#d4894a','#e6a060'],
+  R:['#e06020','#ff8830'], T:['#8888aa','#aab'],  Y:['#cc3344','#ff4466'],
+  U:['#cc6600','#e88800'], I:['#447799','#5599bb'],O:['#8888aa','#aab0bb'],
+  P:['#884422','#aa6644'], A:['#ddcc88','#eeee99'],S:['#555','#777'],
+  D:['#bb3344','#dd5566'], F:['#888','#aaa'],      G:['#4488dd','#66aaff'],
+  H:['#ee8822','#ffaa44'], J:['#556633','#778844'], K:['#3366bb','#4488dd'],
+  L:['#cc3344','#ee5566'], Z:['#aa3322','#cc5544'], X:['#cc2222','#ee4444'],
+  C:['#557733','#779944'], V:['#aa7733','#cc9955'], B:['#885522','#aa7744'],
+  N:['#556655','#778877'], M:['#777','#999'],
+};
+
+function drawWeaponSprite(key,cx,cy,ps,fallback){
   const bmp=WEAPON_SPRITES[key];
   if(!bmp)return;
   const bw=bmp[0].length*ps,bh=bmp.length*ps;
+  const cols=WPN_COLORS[key];
+  const color=cols?(night?cols[1]:cols[0]):fallback;
   renderBitmap(bmp,cx-bw/2,cy-bh/2,ps,color);
 }
 
 function drawVehicle(){
   const x=dino.x,y=dino.y;
-  const bc=night?'#c8c8c8':'#535353';
-  X.fillStyle=bc;
   if(vehicleMode==='heli'){
+    const hb=night?'#5599bb':'#447799';
+    const hd=night?'#3377aa':'#335577';
     // helicopter body
+    X.fillStyle=hb;
     X.fillRect(x-10,y-15,60,18);
+    X.fillStyle=hd;
     X.fillRect(x+40,y-12,16,10);
     // rotor
+    X.fillStyle=night?'#aaa':'#666';
     const rAng=fr*0.5;
     X.fillRect(x-20+Math.cos(rAng)*25,y-20,50,3);
     X.fillRect(x+15,y-22,4,8);
     // skids
+    X.fillStyle=night?'#888':'#555';
     X.fillRect(x-5,y+3,40,3);
     // tiny dino inside
+    X.fillStyle=night?'#5a8a5a':'#3a7a3a';
     X.fillRect(x+5,y-10,12,10);
     X.fillRect(x+14,y-14,10,8);
+    // windshield
+    X.fillStyle=night?'rgba(100,200,255,0.3)':'rgba(80,180,240,0.4)';
+    X.fillRect(x+20,y-13,12,8);
   }else{
+    const tb=night?'#778877':'#556655';
+    const td=night?'#667766':'#445544';
     // tank body
+    X.fillStyle=tb;
     X.fillRect(x-15,y-20,65,18);
     // turret
+    X.fillStyle=td;
     X.fillRect(x+5,y-30,25,12);
     // barrel
+    X.fillStyle=night?'#889':'#667';
     X.fillRect(x+30,y-27,30,5);
     // treads
+    X.fillStyle=night?'#555':'#333';
     X.fillRect(x-18,y-2,68,8);
+    X.fillStyle=night?'#666':'#444';
     for(let i=0;i<6;i++){
       X.fillRect(x-16+i*11+((gOff*0.5)%11),y-1,6,6);
     }
     // tiny dino on top
+    X.fillStyle=night?'#5a8a5a':'#3a7a3a';
     X.fillRect(x+10,y-36,10,8);
     X.fillRect(x+17,y-40,8,6);
   }
@@ -598,37 +643,76 @@ function spawnObs(){
 function drawObs(o){
   if(o.dead)return;
   const x=o.x,y=o.y;
-  const cc=night?'#c8c8c8':'#535353';
-  const gc=o.tp==='gpt'?'#DAA520':cc;
-  X.fillStyle=(o.tp==='pt'||o.tp==='gpt')?gc:night?'#aaa':'#535353';
+  // cactus colors
+  const cactMain=night?'#4a9a4a':'#2a7a2a';
+  const cactDark=night?'#3a8a3a':'#1a6a1a';
+  const cactHigh=night?'#5aaa5a':'#3a9a3a';
+  // ptero colors
+  const ptCol=night?'#b8956a':'#8a6842';
+  const ptWing=night?'#a07850':'#7a5535';
+  const goldCol='#DAA520';
+  const goldWing='#c49418';
+
   if(o.tp==='cs'){
+    X.fillStyle=cactMain;
     X.fillRect(x,y-33,17,33);
+    X.fillStyle=cactDark;
     X.fillRect(x-7,y-23,9,5);X.fillRect(x+15,y-16,9,5);
     X.fillRect(x-7,y-23,5,13);X.fillRect(x+19,y-16,5,11);
+    // highlight stripe
+    X.fillStyle=cactHigh;
+    X.fillRect(x+6,y-30,3,24);
   }else if(o.tp==='ct'){
+    X.fillStyle=cactMain;
     X.fillRect(x,y-50,20,50);
+    X.fillStyle=cactDark;
     X.fillRect(x-9,y-38,11,5);X.fillRect(x+18,y-28,11,5);
     X.fillRect(x-9,y-38,5,18);X.fillRect(x+24,y-28,5,16);
+    X.fillStyle=cactHigh;
+    X.fillRect(x+8,y-46,3,40);
   }else if(o.tp==='cg'){
+    X.fillStyle=cactMain;
     X.fillRect(x,y-33,15,33);
     X.fillRect(x+16,y-38,15,38);
     X.fillRect(x+32,y-28,15,28);
+    X.fillStyle=cactDark;
     X.fillRect(x-5,y-20,7,4);X.fillRect(x-5,y-20,4,10);
     X.fillRect(x+40,y-18,7,4);X.fillRect(x+43,y-18,4,9);
+    X.fillStyle=cactHigh;
+    X.fillRect(x+6,y-30,2,24);
+    X.fillRect(x+23,y-34,2,28);
+    X.fillRect(x+38,y-24,2,18);
   }else{
     // pterodactyl
-    X.fillStyle=gc;
+    const isGold=o.tp==='gpt';
+    const bodyC=isGold?goldCol:ptCol;
+    const wingC=isGold?goldWing:ptWing;
+    X.fillStyle=bodyC;
     X.fillRect(x+4,y-4,28,9);
+    // beak
+    X.fillStyle=isGold?'#eebb33':night?'#cc9955':'#aa7733';
     X.fillRect(x+32,y-2,10,5);
+    // eye
+    X.fillStyle=night?'#111':'#fff';
+    X.fillRect(x+28,y-2,3,3);
+    // wings
+    X.fillStyle=wingC;
     o.wf=(o.wf||0)+0.12;
     const wy=Math.sin(o.wf*3)*9;
     X.beginPath();X.moveTo(x+8,y);X.lineTo(x,y-14+wy);X.lineTo(x+18,y);X.fill();
     X.beginPath();X.moveTo(x+12,y+4);X.lineTo(x+4,y+13-wy*.5);X.lineTo(x+22,y+4);X.fill();
-    if(o.tp==='gpt'){
+    if(isGold){
       X.fillStyle='rgba(255,215,0,0.15)';
       X.beginPath();X.arc(x+20,y,22,0,Math.PI*2);X.fill();
     }
   }
+}
+
+function deadPartColor(tp){
+  if(tp==='gpt')return'#DAA520';
+  if(tp==='pt')return night?'#b8956a':'#8a6842';
+  if(tp==='cs'||tp==='ct'||tp==='cg')return night?'#4a9a4a':'#2a7a2a';
+  return night?'#aaa':'#535353';
 }
 
 function drawDeadParts(){
@@ -636,7 +720,7 @@ function drawDeadParts(){
     if(!o.dead)continue;
     for(const p of o.parts){
       X.save();X.translate(p.x,p.y);X.rotate(p.rot);X.globalAlpha=p.a;
-      X.fillStyle=(o.tp==='gpt')?'#DAA520':night?'#aaa':'#535353';
+      X.fillStyle=deadPartColor(o.tp);
       X.fillRect(-p.w/2,-p.h/2,p.w,p.h);
       X.restore();
       p.x+=p.vx;p.y+=p.vy;p.vy+=0.4;p.rot+=p.vr;p.a-=0.018;
@@ -668,20 +752,34 @@ function spawnPickup(){
   pickups.push({k,x:W+30,y:GY-20-Math.random()*60,bob:Math.random()*6.28});
 }
 
+const TYPE_GLOW={
+  melee:'rgba(170,176,184,',proj:'rgba(200,160,40,',beam:'rgba(240,120,40,',
+  expl:'rgba(200,80,40,',spec:'rgba(60,140,220,',veh:'rgba(70,120,160,',
+  pow:'rgba(100,60,180,',cosm:'rgba(200,60,80,',danger:'rgba(200,60,60,',
+};
+
 function drawPickups(){
   for(const p of pickups){
     p.bob+=0.06;
     const by=Math.sin(p.bob)*5;
-    const bc=night?'#c8c8c8':'#535353';
     const cx=p.x+10,cy=p.y+by;
     X.save();
-    // glow circle
-    X.fillStyle=night?'rgba(200,200,200,0.1)':'rgba(83,83,83,0.07)';
+    // colored glow circle based on weapon type
+    const wt=WPN[p.k].t;
+    const glowBase=TYPE_GLOW[wt]||'rgba(130,130,130,';
+    X.fillStyle=glowBase+(night?'0.12':'0.1')+')';
     X.beginPath();X.arc(cx,cy,18,0,Math.PI*2);X.fill();
-    // weapon sprite
-    drawWeaponSprite(p.k,cx,cy-2,3,bc);
+    // outer ring pulse
+    X.strokeStyle=glowBase+(night?'0.2':'0.15')+')';
+    X.lineWidth=1;
+    const pulse=16+Math.sin(p.bob*1.5)*3;
+    X.beginPath();X.arc(cx,cy,pulse,0,Math.PI*2);X.stroke();
+    // weapon sprite (uses its own color)
+    drawWeaponSprite(p.k,cx,cy-2,3,night?'#c8c8c8':'#535353');
     // small key label below
-    X.fillStyle=bc;X.font='bold 7px "Press Start 2P",monospace';
+    const cols=WPN_COLORS[p.k];
+    X.fillStyle=cols?(night?cols[1]:cols[0]):(night?'#c8c8c8':'#535353');
+    X.font='bold 7px "Press Start 2P",monospace';
     X.textAlign='center';X.textBaseline='top';
     X.fillText(p.k,cx,cy+12);
     X.restore();
@@ -797,7 +895,7 @@ function drawEffects(){
 // projectiles
 function drawProjs(){
   for(const p of projs){
-    X.save();X.fillStyle=p.c||night?'#c8c8c8':'#535353';
+    X.save();X.fillStyle=p.c||(night?'#c8c8c8':'#535353');
     if(p.shape==='star'){
       X.translate(p.x,p.y);X.rotate(fr*0.3);
       for(let i=0;i<4;i++){X.rotate(Math.PI/2);X.fillRect(-1,-6,2,12);}
@@ -874,12 +972,15 @@ function handleWeaponKey(k){
   }else if(w.t==='proj'){
     const vy=w.arc?(typeof w.arc==='number'?-w.arc*8:-3):0;
     const arcVal=w.arc?(typeof w.arc==='number'?w.arc*0.15:0.15):0;
-    let shape='bullet';
-    if(k==='T')shape='star';
-    else if(k==='B')shape='arrow';
-    else if(k==='E')shape='sandal';
+    let shape='bullet',pc;
+    if(k==='T'){shape='star';pc=night?'#aab':'#889';}
+    else if(k==='B'){shape='arrow';pc=night?'#aa7744':'#885522';}
+    else if(k==='E'){shape='sandal';pc=night?'#e6a060':'#d4894a';}
+    else if(k==='W'){pc=night?'#ccaa22':'#aa8800';}
+    else if(k==='S'){pc=night?'#ccaa22':'#aa8800';}
+    else{pc=night?'#c8c8c8':'#535353';}
     projs.push({x:dx,y:dy,vx:w.sp||14,vy,arc:arcVal||0,
-      c:night?'#c8c8c8':'#535353',shape});
+      c:pc,shape});
   }else if(w.t==='beam'){
     const range=w.r||80;
     if(k==='X'){
@@ -898,7 +999,7 @@ function handleWeaponKey(k){
     });
   }else if(w.t==='expl'){
     if(k==='J'){
-      projs.push({x:dx,y:dy,vx:10,vy:-6,arc:0.3,c:night?'#c8c8c8':'#535353',shape:'grenade'});
+      projs.push({x:dx,y:dy,vx:10,vy:-6,arc:0.3,c:night?'#778844':'#556633',shape:'grenade'});
     }else if(k==='Z'){
       const tx=dino.x+200+Math.random()*200;
       addEffect('meteor',{tx,ty:GY});
@@ -988,31 +1089,42 @@ function checkCol(){
 
 // ground & environment
 function drawGround(){
-  X.fillStyle=night?'#c8c8c8':'#535353';
+  X.fillStyle=night?'#998866':'#776644';
   X.fillRect(0,GY,W,1);
-  X.fillStyle=night?'#555':'#ccc';
+  X.fillStyle=night?'#665533':'#ccbb99';
   for(let i=0;i<W+20;i+=26){
     const xp=((i-gOff%26)+W)%W;
     X.fillRect(xp,GY+7,13,1);
     X.fillRect(xp+5,GY+14,9,1);
   }
+  // sparse ground detail
+  X.fillStyle=night?'#554422':'#ddccaa';
+  for(let i=0;i<W+40;i+=73){
+    const xp=((i-gOff%73)+W+40)%(W+40)-20;
+    X.fillRect(xp,GY+3,2,2);
+    X.fillRect(xp+30,GY+5,3,1);
+  }
 }
 
 function drawClouds(){
-  X.fillStyle=night?'#333':'#e0e0e0';
   for(const c of clouds){
+    X.fillStyle=night?'#334455':'#ccdde8';
     X.fillRect(c.x,c.y,44,13);
     X.fillRect(c.x+9,c.y-7,24,9);
     X.fillRect(c.x+4,c.y+11,18,5);
+    // highlight
+    X.fillStyle=night?'#3a5566':'#ddeaf2';
+    X.fillRect(c.x+9,c.y-5,20,4);
   }
 }
 
 function drawStars(){
   if(!night)return;
-  X.fillStyle='#e0e0e0';
+  const starCols=['#eeeedd','#ddddff','#ffeedd','#ddeeff'];
   for(let i=0;i<25;i++){
     const sx=(i*131+fr*0.08)%W,sy=(i*89)%(GY-40);
-    X.globalAlpha=0.2+Math.sin(fr*0.04+i)*0.2;
+    X.globalAlpha=0.25+Math.sin(fr*0.04+i)*0.25;
+    X.fillStyle=starCols[i%4];
     X.fillRect(sx,sy,(i%3)+1,(i%3)+1);
   }
   X.globalAlpha=1;
@@ -1020,9 +1132,18 @@ function drawStars(){
 
 function drawMoon(){
   if(!night)return;
-  X.fillStyle='#ddd';X.beginPath();X.arc(740,45,22,0,Math.PI*2);X.fill();
-  X.fillStyle=night?'#1a1a1a':'#f7f7f7';
+  // outer glow
+  X.fillStyle='rgba(230,220,180,0.06)';
+  X.beginPath();X.arc(740,45,34,0,Math.PI*2);X.fill();
+  // moon body
+  X.fillStyle='#eee8cc';X.beginPath();X.arc(740,45,22,0,Math.PI*2);X.fill();
+  // crater shadow
+  X.fillStyle='#1a1a1a';
   X.beginPath();X.arc(748,40,17,0,Math.PI*2);X.fill();
+  // subtle craters
+  X.fillStyle='#ddd4b8';
+  X.beginPath();X.arc(732,42,3,0,Math.PI*2);X.fill();
+  X.beginPath();X.arc(738,52,2,0,Math.PI*2);X.fill();
 }
 
 function drawSwing(){
@@ -1032,10 +1153,12 @@ function drawSwing(){
   const angle=-Math.PI*0.6+prog*Math.PI*1.2;
   const len=WPN[swingKey]?WPN[swingKey].r||55:55;
   const tx=dx+Math.cos(angle)*len,ty=dy+Math.sin(angle)*len;
-  X.save();X.strokeStyle=night?'#c8c8c8':'#535353';X.lineWidth=3;X.lineCap='round';
+  const sc=WPN_COLORS[swingKey];
+  const bladeCol=sc?(night?sc[1]:sc[0]):(night?'#c8c8c8':'#535353');
+  X.save();X.strokeStyle=bladeCol;X.lineWidth=3;X.lineCap='round';
   X.beginPath();X.moveTo(dx,dy);X.lineTo(tx,ty);X.stroke();
   // swing trail
-  X.globalAlpha=0.3;X.strokeStyle=night?'#fff':'#888';X.lineWidth=6;
+  X.globalAlpha=0.25;X.strokeStyle=bladeCol;X.lineWidth=6;
   X.beginPath();X.arc(dx,dy,len,-Math.PI*0.6,-Math.PI*0.6+prog*Math.PI*1.2);X.stroke();
   X.restore();
 }
@@ -1100,13 +1223,13 @@ function update(){
       if(keysDown['ArrowDown'])dino.y=Math.min(GY-30,dino.y+3);
       // auto shoot
       if(fr%15===0){
-        projs.push({x:dino.x+40,y:dino.y+8,vx:16,vy:2,c:night?'#c8c8c8':'#535353',shape:'bullet'});
+        projs.push({x:dino.x+40,y:dino.y+8,vx:16,vy:2,c:night?'#ccaa22':'#aa8800',shape:'bullet'});
       }
     }else{
       dino.y=GY;
       tankAutoKill();
       if(fr%20===0){
-        projs.push({x:dino.x+60,y:dino.y-25,vx:18,vy:0,c:night?'#c8c8c8':'#535353',shape:'bullet'});
+        projs.push({x:dino.x+60,y:dino.y-25,vx:18,vy:0,c:night?'#ccaa22':'#aa8800',shape:'bullet'});
       }
     }
   }else{
@@ -1175,7 +1298,21 @@ function draw(){
   X.save();
   if(shake>0)X.translate((Math.random()-.5)*shake*2,(Math.random()-.5)*shake*2);
 
-  X.fillStyle=night?'#1a1a1a':'#f7f7f7';
+  if(night){
+    // night sky gradient
+    const ng=X.createLinearGradient(0,0,0,H);
+    ng.addColorStop(0,'#0a0a1a');
+    ng.addColorStop(0.6,'#141428');
+    ng.addColorStop(1,'#1a1a2a');
+    X.fillStyle=ng;
+  }else{
+    // day sky gradient
+    const dg=X.createLinearGradient(0,0,0,H);
+    dg.addColorStop(0,'#c8e0f8');
+    dg.addColorStop(0.5,'#e4eff8');
+    dg.addColorStop(1,'#f5f5f0');
+    X.fillStyle=dg;
+  }
   X.fillRect(0,0,W,H);
 
   drawStars();drawMoon();drawClouds();drawGround();
