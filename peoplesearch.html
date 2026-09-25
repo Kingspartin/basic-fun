@@ -193,6 +193,31 @@ table.pins input,table.pins select{height:28px;border-radius:6px;border:1px soli
 table.pins .x{border:0;background:transparent;color:var(--faint);cursor:pointer;font-size:16px}
 table.pins .x:hover{color:var(--bad)}
 
+/* tool labels */
+.tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
+.tag{font-size:10px;line-height:1;padding:3px 6px;border-radius:5px;border:1px solid var(--line2);color:var(--muted);white-space:nowrap;font-weight:500;background:transparent;font-family:var(--sans)}
+.tag.t-login{color:var(--info);border-color:color-mix(in srgb,var(--info) 40%,transparent)}
+.tag.t-paid,.tag.t-bot{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 40%,transparent)}
+.tag.t-guess{border-style:dashed}
+.legend{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:-4px 2px 14px;font-size:12px;color:var(--muted)}
+.legend button.tag{cursor:pointer;font-size:11px;padding:4px 8px}
+.legend button.tag:hover{border-color:var(--accent)}
+.legend button.tag.hid{opacity:.5;text-decoration:line-through}
+.banner{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:60;width:min(680px,calc(100% - 32px));display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 14px;background:var(--panel);border:1px solid var(--warn);border-radius:var(--r);box-shadow:0 12px 32px rgba(0,0,0,.35);font-size:13px}
+.banner>span{flex:1;min-width:220px}
+.ln .flaky{font-size:10.5px;color:var(--faint);font-weight:400}
+.mapbox{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
+.mapbox iframe,.mapbox img{width:100%;height:260px;border:1px solid var(--line);border-radius:8px;object-fit:cover;background:var(--panel2)}
+.gres{padding:10px 14px;border-top:1px solid var(--line);display:flex;gap:10px;align-items:flex-start}
+.gres>div{flex:1;min-width:0}
+.gres a.gt{font-weight:600;text-decoration:none;color:var(--text)}
+.gres a.gt:hover{color:var(--accent)}
+.gres .gu{font-size:11px;font-family:var(--mono);color:var(--ok);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.keyrow{display:flex;gap:8px;align-items:center}
+.keyrow .inp{flex:1}
+.live,.card{scroll-margin-top:120px}
+.pinlink{border:0;background:transparent;color:var(--faint);cursor:pointer;font-size:12px;padding:2px 4px;border-radius:5px;flex:none}
+.pinlink:hover,.pinlink.on{color:var(--accent)}
 .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(20px);background:var(--text);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;transition:.18s;z-index:50}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .foot{padding:0 18px 30px;color:var(--faint);font-size:12px}
@@ -274,7 +299,7 @@ table.pins .x:hover{color:var(--bad)}
     <div id="view"></div>
   </section>
 </div>
-<div class="foot">PeopleScope: a client-side OSINT launcher. No data is sent anywhere except the third-party sites you open and the public APIs used by live checks (listed in each panel). Subject and case data stay in this browser's local storage.</div>
+<div class="foot">PeopleScope: a client-side OSINT launcher. No data is sent anywhere except the third-party sites you open and the public APIs used by live checks (listed in each panel). Optional API keys go only to their provider's API. Subject and case data stay in this browser's local storage.</div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
@@ -289,6 +314,22 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
 };
+// API keys: kept in sessionStorage (this tab only) unless "remember" is on, then localStorage.
+// Sent only to Google's / GitHub's API hosts; never included in exports or generated scripts.
+const KEYS = (() => {
+  const blank = { google: '', cx: '', github: '', remember: false };
+  const saved = store.get('ps.keys', null);
+  if (saved) return { ...blank, ...saved, remember: true };
+  try { const s = sessionStorage.getItem('ps.keys'); if (s) return { ...blank, ...JSON.parse(s), remember: false }; } catch (e) {}
+  return blank;
+})();
+function saveKeys() {
+  const { remember, ...k } = KEYS;
+  try {
+    if (remember) { localStorage.setItem('ps.keys', JSON.stringify(k)); sessionStorage.removeItem('ps.keys'); }
+    else { localStorage.removeItem('ps.keys'); sessionStorage.setItem('ps.keys', JSON.stringify(k)); }
+  } catch (e) {}
+}
 function h(tag, props, ...kids) {
   const el = document.createElement(tag);
   if (props) for (const [k, v] of Object.entries(props)) {
@@ -310,7 +351,7 @@ const dash = s => String(s).trim().replace(/\s+/g, '-');
 const qt = s => `"${s}"`;
 const sq = s => "'" + String(s).replace(/'/g, "'\\''") + "'";
 const fmtDate = v => { if (v == null || v === '') return ''; const d = typeof v === 'number' ? new Date(v < 1e12 ? v * 1000 : v) : new Date(v); return isNaN(d) ? String(v) : d.toISOString().slice(0, 10); };
-const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+const plural = (n, w, pl) => `${n} ${n === 1 ? w : (pl || w + 's')}`;
 const google = s => 'https://www.google.com/search?q=' + enc(s);
 const bing = s => 'https://www.bing.com/search?q=' + enc(s);
 const ddg = s => 'https://duckduckgo.com/?q=' + enc(s);
@@ -428,9 +469,11 @@ function derive(raw) {
     school: !!d.school, age: !!d.age, us: d.isUS,
   };
   d.has.anyid = d.has.name || d.has.user || d.has.email || d.has.phone;
+  d.has.gkey = !!KEYS.google.trim();
+  d.has.cse = d.has.gkey && !!KEYS.cx.trim();
   return d;
 }
-const NEED_LABEL = { name: 'first + last name', first: 'first name', last: 'last name', middle: 'middle name', user: 'username', email: 'valid email', phone: 'phone', nanp: 'US/CA phone', iso: 'phone w/ country', addr: 'street + city/ZIP', city: 'city', state: 'state', loc: 'city or state', domain: 'domain', img: 'photo URL', employer: 'employer', school: 'school', age: 'birth year / age', us: 'country = US' };
+const NEED_LABEL = { name: 'first + last name', first: 'first name', last: 'last name', middle: 'middle name', user: 'username', email: 'valid email', phone: 'phone', nanp: 'US/CA phone', iso: 'phone w/ country', addr: 'street + city/ZIP', city: 'city', state: 'state', loc: 'city or state', domain: 'domain', img: 'photo URL', employer: 'employer', school: 'school', age: 'birth year / age', us: 'country = US', gkey: 'Google API key', cse: 'Google API key + search engine ID' };
 // need entries: "a" (required) or "a|b" (either)
 const needOk = need => (need || []).every(n => n.split('|').some(k => D.has[k]));
 const needMissing = need => (need || []).filter(n => !n.split('|').some(k => D.has[k])).map(n => n.split('|').map(k => NEED_LABEL[k] || k).join(' or '));
@@ -519,7 +562,7 @@ const MODULES = [
   { id: 'overview', title: 'Overview', custom: renderOverview },
   { id: 'live', title: 'Live checks', custom: renderLiveAll },
   {
-    id: 'search', title: 'Search & dorks', blurb: 'Exact-phrase searches across engines, ready-made Google dorks for every identifier, and a dork builder.', pre: renderDorkBuilder,
+    id: 'search', title: 'Search & dorks', blurb: 'Exact-phrase searches across engines, ready-made Google dorks for every identifier, and a dork builder. With a Google API key and search engine ID, results show right here.', pre: () => [renderDorkBuilder(), gsPanel()],
     groups: [
       { t: 'Exact-name search', need: ['name'], items: [
         T('Google', '"First Last"', () => google(nameQ())), T('Bing', 'Different index than Google', () => bing(nameQ())),
@@ -645,9 +688,9 @@ const MODULES = [
     ],
   },
   {
-    id: 'records', title: 'People & records', blurb: 'People-search aggregators, addresses, courts, political donations, professional licenses, business filings and genealogy.', pre: () => livePanel('name'),
+    id: 'records', title: 'People & records', blurb: 'People-search aggregators, addresses, courts, political donations, professional licenses, business filings and genealogy.', pre: () => [addrPanel(), livePanel('name')],
     groups: [
-      { t: 'People-search engines', need: ['name'], note: 'Aggregated public & commercial records. Accuracy varies widely; corroborate before relying on any result. Adding city/state narrows results.', items: [
+      { t: 'People-search engines', need: ['name'], tags: 'us', note: 'Aggregated public & commercial records. Accuracy varies widely; corroborate before relying on any result. Adding city/state narrows results.', items: [
         T('TruePeopleSearch', 'Free: addresses, phones, relatives', () => 'https://www.truepeoplesearch.com/results?name=' + enc(D.name) + (D.loc ? '&citystatezip=' + enc(D.loc) : '')),
         T('FastPeopleSearch', 'Free: addresses, phones, relatives', () => 'https://www.fastpeoplesearch.com/name/' + slug(D.name) + (D.city && D.state ? '_' + slug(D.city + ' ' + D.state) : '')),
         T('ThatsThem', 'Free: contact & address', () => `https://thatsthem.com/name/${dash(D.first)}-${dash(D.last)}` + (D.cityState ? '/' + D.cityState : '')),
@@ -682,14 +725,14 @@ const MODULES = [
         T('Whitepages', 'Residents & owner', () => `https://www.whitepages.com/address/${dash(D.addr)}/${D.cityState || enc(D.zip)}`),
         T('County records (NETR)', 'Assessor & recorder portals by county', () => 'https://publicrecords.netronline.com/state/' + D.state, ['state', 'us']),
       ] },
-      { t: 'Courts & legal', need: ['name'], items: [
+      { t: 'Courts & legal', need: ['name'], tags: 'us', items: [
         T('CourtListener', 'Opinions (Free Law Project)', () => 'https://www.courtlistener.com/?q=' + enc(nameQ())), T('CourtListener RECAP', 'Federal dockets (PACER mirror)', () => 'https://www.courtlistener.com/?type=r&q=' + enc(nameQ())),
         T('Justia Dockets', 'Federal civil cases by party', () => 'https://dockets.justia.com/search?parties=' + enc(D.name)), T('Judyrecords', 'State & federal case search', () => 'https://www.judyrecords.com/getSearchResults/?search=' + enc(nameQ())),
         T('UniCourt', 'State & federal cases', () => 'https://unicourt.com/search?q=' + enc(D.name)), T('PACER Case Locator', 'Official federal index (account)', () => 'https://pcl.uscourts.gov/pcl/index.jsf', HOME),
         T('BOP inmate locator', 'Federal inmates since 1982', () => 'https://www.bop.gov/inmateloc/', HOME), T('VINELink', 'State/county custody status', () => 'https://vinelink.vineapps.com/', HOME),
         T('NSOPW', 'National sex offender public registry', () => 'https://www.nsopw.gov/', HOME),
       ] },
-      { t: 'Political, voter & government', need: ['name'], items: [
+      { t: 'Political, voter & government', need: ['name'], tags: 'us', items: [
         T('FEC contributions', 'Federal donations: employer, occupation, city', () => `https://www.fec.gov/data/receipts/individual-contributions/?contributor_name=${enc(D.last + ', ' + D.first)}` + (D.state && D.isUS ? '&contributor_state=' + D.state : '')),
         T('OpenSecrets donors', 'Donor lookup', () => 'https://www.opensecrets.org/donor-lookup/results?name=' + enc(D.name) + (D.state && D.isUS ? '&state=' + D.state : '')),
         T('VoterRecords', 'Voter registrations (select states)', () => `https://voterrecords.com/voters/${slug(D.first)}-${slug(D.last)}/1`),
@@ -712,7 +755,7 @@ const MODULES = [
     ],
   },
   {
-    id: 'images', title: 'Images', blurb: 'Reverse-search a photo by URL, or drop a local file to read its metadata (camera, timestamps, GPS) and export a scrubbed copy.', pre: renderImageLab,
+    id: 'images', title: 'Images', blurb: 'Reverse-search a photo by URL, or drop a local file to read its metadata (camera, timestamps, GPS) and export a scrubbed copy. With a Google key, Cloud Vision finds pages using the same photo.', pre: () => [renderImageLab(), visionPanel()],
     groups: [
       { t: 'Reverse image search', need: ['img'], note: 'Finds where else a photo appears online: profile pictures are often reused across accounts.', items: [
         T('Google Lens', 'Best general coverage', () => 'https://lens.google.com/uploadbyurl?url=' + enc(D.img)),
@@ -751,6 +794,7 @@ const MODULES = [
   },
   { id: 'cli', title: 'CLI toolkit', custom: renderCli },
   { id: 'case', title: 'Case file', custom: renderCase },
+  { id: 'keys', title: 'API keys', custom: () => renderKeys() },
   {
     id: 'privacy', title: 'Privacy & opt-out', blurb: 'Run the console on yourself, then remove what you find. Brokers re-list people, so repeat opt-outs every few months.', pre: renderPrivacyIntro,
     groups: [
@@ -759,7 +803,7 @@ const MODULES = [
         T('Have I Been Pwned', 'Breach exposure + notifications', () => 'https://haveibeenpwned.com/'), T('Mozilla Monitor', 'Breach & broker scan', () => 'https://monitor.mozilla.org/'),
         T('Big Ass Data Broker Opt-Out List', 'Maintained guide to every major broker', () => 'https://github.com/yaelwrites/Big-Ass-Data-Broker-Opt-Out-List'),
       ] },
-      { t: 'People-search opt-outs', need: HOME, items: [
+      { t: 'People-search opt-outs', need: HOME, tags: 'us', items: [
         T('Whitepages', 'Suppression request', () => 'https://www.whitepages.com/suppression-requests'), T('Spokeo', 'Opt out', () => 'https://www.spokeo.com/optout'),
         T('BeenVerified', 'Opt out', () => 'https://www.beenverified.com/app/optout/search'), T('TruePeopleSearch', 'Removal', () => 'https://www.truepeoplesearch.com/removal'),
         T('FastPeopleSearch', 'Removal', () => 'https://www.fastpeoplesearch.com/removal'), T('Radaris', 'Privacy control', () => 'https://radaris.com/control/privacy'),
@@ -776,11 +820,108 @@ const MODULES = [
     ],
   },
 ];
-// Normalize: dork items carry the query builder as their name; group-level needs merge into each item.
+/* Labels: what to expect before clicking. Rules are "module|tool name[@group title]|tags".
+   Untagged doesn't guarantee a tool works; sites change their access rules often. */
+const TAG_DEFS = {
+  login: ['Login', 'Needs an account to show results'],
+  paid: ['Paid', 'Full results are behind a paywall'],
+  us: ['US only', 'Covers US records only'],
+  bot: ['CAPTCHA', 'Often shows a bot check; may block VPNs and non-US visitors'],
+  guess: ['Unverified link', 'Link format not verified; may land on the homepage or a 404'],
+  home: ['Search page', 'Opens the site itself; type the details in there'],
+  app: ['Opens app', 'Opens a chat/contact link; what you see depends on the app and the account\'s privacy settings'],
+};
+const TAG_RULES = `
+search|Newspapers.com|paid
+social|Facebook|login
+social|LinkedIn|login
+social|X / Twitter|login
+social|Threads@Find people by name|login
+social|VK|login
+social|Quora|login
+social|Flickr|guess
+social|Reddit@Find people by name|guess
+social|Instagram@Profiles by username|login
+social|X: posts from user|login
+social|X: mentions of user|login
+usernames|Instagram|login
+usernames|Facebook|login
+usernames|LinkedIn|login
+usernames|X / Twitter|login
+usernames|Venmo|login
+usernames|IDCrawl|guess
+email|Have I Been Pwned@Breach exposure|guess
+email|Epieos|guess
+email|Gravatar profile|guess
+email|ThatsThem|us bot
+email|Hunter verifier|login
+email|Hunter domain search|login
+email|Facebook|login
+phone|TruePeopleSearch|us bot
+phone|FastPeopleSearch|us bot
+phone|ThatsThem|us bot
+phone|Whitepages|us paid
+phone|Spokeo|us paid
+phone|USPhoneBook|us
+phone|CyberBackgroundChecks|us bot guess
+phone|Truecaller|login
+phone|Sync.me|guess
+phone|WhatsApp|app
+phone|Telegram|app
+phone|Signal|app
+records|TruePeopleSearch|us bot
+records|FastPeopleSearch|us bot
+records|FastPeopleSearch@Address & property|guess
+records|ThatsThem|bot guess
+records|Whitepages|us paid guess
+records|Spokeo|paid
+records|FamilyTreeNow|bot
+records|Radaris|guess
+records|Nuwber|guess
+records|CyberBackgroundChecks|bot guess
+records|SearchPeopleFree|guess
+records|AdvancedBackgroundChecks|guess
+records|PeopleFinders|paid guess
+records|BeenVerified|paid guess
+records|Intelius|paid guess
+records|192.com|paid
+records|Zillow|us guess
+records|County records (NETR)|us
+records|Judyrecords|guess
+records|UniCourt|login guess
+records|PACER Case Locator|login paid
+records|VoterRecords|guess
+records|OpenCorporates|login
+records|SEC EDGAR full-text|us
+records|NPI Registry|us
+records|FINRA BrokerCheck|us
+records|Crunchbase|login paid
+records|FAA Airmen|us
+records|FCC ULS|us
+records|FamilySearch|login
+records|Ancestry|login paid
+records|BillionGraves|guess
+web|SecurityTrails|login
+web|Shodan|login
+privacy|Intelius / PeopleConnect|login
+privacy|Radaris|guess
+privacy|Nuwber|guess
+privacy|ClustrMaps|guess
+privacy|PeekYou|guess
+`.trim().split('\n').map(l => l.split('|'));
+// Normalize: dork items carry the query builder as their name; group-level needs and tags merge into each item.
 for (const m of MODULES) for (const g of (m.groups || [])) for (const it of g.items) {
   if (g.dork) { it.dork = it.n; it.n = null; it.d = 'Google'; it.u = () => google(it.dork()); }
   it.need = it.home ? [] : [...(g.need || []), ...(it.need || [])];
+  const tags = new Set([...(g.tags ? g.tags.split(' ') : []), ...(it.home ? ['home'] : [])]);
+  for (const [mid, sel, t] of TAG_RULES) {
+    const [name, grp] = sel.split('@');
+    if (mid === m.id && name === it.n && (!grp || grp === g.t)) t.split(' ').forEach(x => tags.add(x));
+  }
+  it.tags = Object.keys(TAG_DEFS).filter(k => tags.has(k));
 }
+// Every tag rule must match a real tool, so a renamed tool can't silently lose its label.
+for (const [mid, sel] of TAG_RULES) { const [name, grp] = sel.split('@'); const m = MODULES.find(x => x.id === mid); if (!m || !m.groups.some(g => (!grp || g.t === grp) && g.items.some(it => it.n === name))) console.warn('Unmatched tag rule:', mid, sel); }
 
 /* ============================================================
    Rendering: link tools
@@ -796,11 +937,12 @@ function pin(title, url, source) {
   saveCase(); updateTabCounts();
 }
 const itemName = it => it.dork ? it.dork() : it.n;
+const tagRow = it => it.tags && it.tags.length ? h('span', { class: 'tags' }, it.tags.map(t => h('span', { class: 'tag t-' + t, title: TAG_DEFS[t][1], text: TAG_DEFS[t][0] }))) : null;
 function toolCard(it, groupTitle, moduleTitle) {
   const ok = needOk(it.need);
   if (!ok) {
     return h('div', { class: 'tool off' + (it.dork ? ' dork' : '') }, h('div', { class: 'tmain' },
-      h('span', { class: 'tn', text: it.dork ? 'Dork' : it.n }), it.d && !it.dork ? h('span', { class: 'td', text: it.d }) : null,
+      h('span', { class: 'tn', text: it.dork ? 'Dork' : it.n }), it.d && !it.dork ? h('span', { class: 'td', text: it.d }) : null, tagRow(it),
       h('span', { class: 'need', text: 'needs ' + needMissing(it.need).join(', ') })));
   }
   let url; try { url = it.u(); } catch (e) { url = null; }
@@ -811,28 +953,56 @@ function toolCard(it, groupTitle, moduleTitle) {
   pinBtn.onclick = () => { pin(it.dork ? 'Google: ' + name : name, url, `${moduleTitle} › ${groupTitle}`); pinBtn.innerHTML = isPinned(url) ? ICON.pinned : ICON.pin; pinBtn.classList.toggle('on', isPinned(url)); };
   return h('div', { class: 'tool' + (it.dork ? ' dork' : '') },
     h('a', { href: url, target: '_blank', rel: 'noopener noreferrer', title: url },
-      h('span', { class: 'tn', text: name }), it.d && !it.dork ? h('span', { class: 'td', text: it.d }) : null, h('span', { class: 'th', text: hostOf(url) })),
+      h('span', { class: 'tn', text: name }), it.d && !it.dork ? h('span', { class: 'td', text: it.d }) : null, tagRow(it), h('span', { class: 'th', text: hostOf(url) })),
     h('div', { class: 'tact' },
       h('button', { title: 'Copy link', 'aria-label': 'Copy link for ' + name, html: ICON.copy, onclick: () => copy(url, 'Link copied') }), pinBtn));
 }
+function banner(msg, actions = []) {
+  const old = $('#banner'); if (old) old.remove();
+  const b = h('div', { id: 'banner', class: 'banner', role: 'alert' }, h('span', { text: msg }), ...actions, h('button', { class: 'btn sm ghost', text: 'Dismiss', onclick: () => b.remove() }));
+  document.body.append(b);
+}
 function openAll(items) {
-  const urls = items.filter(it => needOk(it.need)).map(it => safeUrl(it.u())).filter(Boolean);
+  const urls = items.filter(it => needOk(it.need) && !isHidden(it)).map(it => safeUrl(it.u())).filter(Boolean);
   if (!urls.length) return;
   if (urls.length > 5 && !confirm(`Open ${urls.length} tabs? Your browser may ask you to allow pop-ups for this page.`)) return;
-  for (const u of urls) window.open(u, '_blank', 'noopener,noreferrer');
+  // Open a blank same-origin tab first so a pop-up blocker is detectable (window.open with noopener always returns null),
+  // then cut the opener link before navigating to the third-party site.
+  let opened = 0;
+  for (const u of urls) {
+    let w = null; try { w = window.open('about:blank', '_blank'); } catch (e) {}
+    if (!w) break;
+    try { w.opener = null; w.location.replace(u); } catch (e) { try { w.close(); } catch (_) {} window.open(u, '_blank', 'noopener,noreferrer'); }
+    opened++;
+  }
+  if (opened < urls.length) {
+    const rest = urls.slice(opened);
+    banner(`Opened ${opened} of ${urls.length}. Your browser blocked the other ${rest.length} as pop-ups. Allow pop-ups for this page (icon at the right end of the address bar), then click "Open all" again.`,
+      [h('button', { class: 'btn sm', text: `Copy ${rest.length} links`, onclick: () => copy(rest.join('\n'), `${rest.length} links copied`) })]);
+  }
 }
-function renderGroup(g, m, items = g.items) {
+let HIDE = new Set(store.get('ps.hideTags', []));
+const isHidden = it => (it.tags || []).some(t => HIDE.has(t));
+function tagLegend() {
+  return h('div', { class: 'legend' }, h('span', { text: 'Labels (click to hide):' }),
+    Object.entries(TAG_DEFS).map(([k, [label, tip]]) => h('button', { class: `tag t-${k}${HIDE.has(k) ? ' hid' : ''}`, title: `${tip}. Click to ${HIDE.has(k) ? 'show' : 'hide'} these tools.`, 'aria-pressed': String(HIDE.has(k)), text: label,
+      onclick: () => { HIDE.has(k) ? HIDE.delete(k) : HIDE.add(k); store.set('ps.hideTags', [...HIDE]); render(); } })));
+}
+function renderGroup(g, m, all = g.items) {
+  const items = all.filter(it => !isHidden(it)), hidden = all.length - items.length;
   const avail = items.filter(it => needOk(it.need)).length;
+  const hidNote = hidden ? h('span', { class: 'gc', text: `(${hidden} hidden by label)` }) : null;
+  if (!items.length) return null;
   if (!avail) {
     const need = [...new Set(items.flatMap(it => needMissing(it.need)))].join(', ');
     const det = h('details', { class: 'group' },
-      h('summary', null, h('h3', { text: g.t }), h('span', { class: 'gc', text: `0/${items.length}` }), h('span', { class: 'need', text: `needs ${need}` })));
+      h('summary', null, h('h3', { text: g.t }), h('span', { class: 'gc', text: `0/${items.length}` }), hidNote, h('span', { class: 'need', text: `needs ${need}` })));
     det.addEventListener('toggle', () => { if (det.open && det.children.length === 1) det.append(h('div', { class: 'grid' }, items.map(it => toolCard(it, g.t, m.title)))); }, { once: true });
     return det;
   }
   return h('section', { class: 'group' },
     h('div', { class: 'ghead' },
-      h('h3', { text: g.t }), h('span', { class: 'gc', text: `${avail}/${items.length}` }),
+      h('h3', { text: g.t }), h('span', { class: 'gc', text: `${avail}/${items.length}` }), hidNote,
       avail > 1 ? h('button', { class: 'btn sm ghost', text: `Open all ${avail}`, onclick: () => openAll(items) }) : null,
       g.note ? h('span', { class: 'gnote', text: g.note }) : null),
     h('div', { class: 'grid' }, items.map(it => toolCard(it, g.t, m.title))));
@@ -861,6 +1031,7 @@ function updateTabCounts() {
     const m = MODULES.find(x => x.id === b.dataset.id), ct = b.querySelector('.ct');
     if (m.groups) { const s = moduleStats(m); ct.textContent = `${s.a}/${s.t}`; }
     else if (m.id === 'case') ct.textContent = CASE.pins.length || '';
+    else if (m.id === 'keys') ct.textContent = KEYS.google ? 'on' : '';
     else ct.textContent = '';
   }
 }
@@ -881,15 +1052,17 @@ function render() {
   const s = moduleStats(m);
   view.append(h('div', { class: 'vhead' }, h('div', { class: 'grow' }, h('h2', { text: m.title }), h('p', { text: m.blurb })),
     h('div', { class: 'stat' }, h('b', { text: `${s.a}` }), h('span', { text: `of ${s.t} tools ready` }))));
+  view.append(tagLegend());
   if (m.pre) view.append(...[].concat(m.pre()).filter(Boolean));
-  for (const g of m.groups) view.append(renderGroup(g, m));
+  for (const g of m.groups) { const el = renderGroup(g, m); if (el) view.append(el); }
 }
 function renderFilter(f) {
-  const out = [h('div', { class: 'vhead' }, h('div', { class: 'grow' }, h('h2', { text: 'Filtered tools' }), h('p', { text: `Tools matching “${f}” across every module. Press Esc to clear.` })))];
+  const out = [h('div', { class: 'vhead' }, h('div', { class: 'grow' }, h('h2', { text: 'Filtered tools' }), h('p', { text: `Tools matching “${f}” across every module, including labels (try "login" or "paid"). Press Esc to clear.` }))), tagLegend()];
   let n = 0;
   for (const m of MODULES) for (const g of (m.groups || [])) {
-    const items = g.items.filter(it => [it.dork ? (needOk(it.need) ? it.dork() : 'dork') : it.n, it.d, g.t, m.title].join(' ').toLowerCase().includes(f));
-    if (items.length) { n += items.length; out.push(renderGroup({ ...g, t: `${m.title} › ${g.t}` }, m, items)); }
+    const items = g.items.filter(it => [it.dork ? (needOk(it.need) ? it.dork() : 'dork') : it.n, it.d, g.t, m.title, ...(it.tags || []).map(t => TAG_DEFS[t][0])].join(' ').toLowerCase().includes(f));
+    const el = items.length && renderGroup({ ...g, t: `${m.title} › ${g.t}` }, m, items);
+    if (el) { n += items.length; out.push(el); }
   }
   if (!n) out.push(h('div', { class: 'empty', text: 'No tools match that filter.' }));
   return h('div', null, out);
@@ -934,24 +1107,52 @@ const LIVE = {};   // kind -> { key, rows: [{n, state, fields, note, link, avata
 const FOUND = (fields, extra) => ({ state: 'found', fields: fields.filter(f => f && f[1] != null && f[1] !== '' && !(Array.isArray(f[1]) && !f[1].length)), ...extra });
 const NONE = note => ({ state: 'none', note });
 const ERR = note => ({ state: 'error', note: note || 'Blocked or rate-limited from the browser; open the link to check manually.' });
-async function getJSON(url, { timeout = 12000, accept = 'application/json' } = {}) {
+async function getJSON(url, { timeout = 12000, accept = 'application/json', headers = {} } = {}) {
   const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), timeout);
   try {
-    const r = await fetch(url, { signal: ctl.signal, credentials: 'omit', referrerPolicy: 'no-referrer', headers: { Accept: accept } });
+    const r = await fetch(url, { signal: ctl.signal, credentials: 'omit', referrerPolicy: 'no-referrer', headers: { Accept: accept, ...headers } });
     const txt = await r.text(); let body = txt; try { body = JSON.parse(txt); } catch (e) {}
     return { status: r.status, ok: r.ok, body };
   } finally { clearTimeout(tm); }
 }
 const dohUrl = (name, type) => `https://dns.google/resolve?name=${enc(name)}&type=${type}`;
+// Google APIs: key appended here only. Referrer policy "origin" so a key restricted to your site's domain still works when hosted.
+async function gapi(url, body) {
+  const u = url + (url.includes('?') ? '&' : '?') + 'key=' + enc(KEYS.google.trim());
+  const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 20000);
+  try {
+    const r = await fetch(u, { method: body ? 'POST' : 'GET', body: body ? JSON.stringify(body) : undefined, headers: body ? { 'Content-Type': 'application/json' } : undefined, signal: ctl.signal, credentials: 'omit', referrerPolicy: 'origin' });
+    const j = await r.json().catch(() => null);
+    return { status: r.status, ok: r.ok && !(j && j.error), body: j };
+  } finally { clearTimeout(tm); }
+}
+function gErr(r) {
+  const e = r.body && r.body.error, msg = e ? (e.message || e.status || '') : `HTTP ${r.status}`;
+  if (/has not been used|is disabled|SERVICE_DISABLED|accessNotConfigured/i.test(msg)) return ERR('This API is not enabled for your key\'s Google Cloud project. Enable it in the console (see the API keys tab).');
+  if (/API key not valid|API_KEY_INVALID|keyInvalid/i.test(msg)) return ERR('Google rejected the API key (invalid or restricted).');
+  if (/referer|referrer/i.test(msg)) return ERR('The key is restricted to other websites (HTTP referrer). See the API keys tab.');
+  if (/quota|rateLimit|RESOURCE_EXHAUSTED/i.test(msg) || r.status === 429) return ERR('Google quota exhausted for today.');
+  if (/billing/i.test(msg)) return ERR('This API needs a billing account on your Google Cloud project.');
+  return ERR('Google API error: ' + msg);
+}
+const cseSearch = (q, start = 1) => gapi(`https://www.googleapis.com/customsearch/v1?cx=${enc(KEYS.cx.trim())}&q=${enc(q)}&num=10&start=${start}`);
+const cseList = r => (r.body.items || []).map(x => ({ t: x.title, s: [x.displayLink, x.snippet].filter(Boolean).join(': '), u: x.link }));
+function cseCheck(n, q) {
+  return { n, need: ['cse'], link: () => google(q()), run: async () => {
+    const r = await cseSearch(q()); if (!r.ok) return gErr(r);
+    const total = +((r.body.searchInformation || {}).totalResults || 0);
+    return total ? FOUND([], { list: cseList(r), label: plural(total, 'result'), note: `Query: ${q()}` }) : NONE(`No Google results for ${q()}`);
+  } };
+}
 
 const LIVE_DEFS = {
   user: {
     title: 'Live username check', need: ['user'], key: () => D.user,
-    sub: 'Queries public APIs that allow browser requests (GitHub, GitLab, Keybase, Hacker News, Chess.com, Lichess, Mastodon, Bluesky, Wikipedia, Reddit, DEV, npm, Codeberg). "Not found" on one platform says nothing about others.',
+    sub: 'Queries public APIs that allow browser requests (GitHub, GitLab, Keybase, Hacker News, Chess.com, Lichess, Mastodon, Bluesky, Wikipedia, Reddit, DEV, npm, Codeberg, plus YouTube with a Google key). "Not found" on one platform says nothing about others.',
     checks: [
-      { n: 'GitHub', link: u => `https://github.com/${u}`, url: u => `https://api.github.com/users/${enc(u)}`, parse: r => r.status === 404 ? NONE() : r.ok ? FOUND([['Name', r.body.name], ['Bio', r.body.bio], ['Location', r.body.location], ['Company', r.body.company], ['Website', r.body.blog], ['Public email', r.body.email], ['X / Twitter', r.body.twitter_username], ['Joined', fmtDate(r.body.created_at)], ['Stats', `${r.body.public_repos} repos · ${r.body.followers} followers`]], { avatar: r.body.avatar_url }) : ERR(r.status === 403 ? 'GitHub rate limit hit (60/hour without login).' : null) },
+      { n: 'GitHub', hint: () => KEYS.github.trim() ? 'using your token' : '60 checks/hour without a token', headers: () => KEYS.github.trim() ? { Authorization: 'Bearer ' + KEYS.github.trim() } : {}, link: u => `https://github.com/${u}`, url: u => `https://api.github.com/users/${enc(u)}`, parse: r => r.status === 404 ? NONE() : r.ok ? FOUND([['Name', r.body.name], ['Bio', r.body.bio], ['Location', r.body.location], ['Company', r.body.company], ['Website', r.body.blog], ['Public email', r.body.email], ['X / Twitter', r.body.twitter_username], ['Joined', fmtDate(r.body.created_at)], ['Stats', `${r.body.public_repos} repos · ${r.body.followers} followers`]], { avatar: r.body.avatar_url }) : ERR(r.status === 401 ? 'GitHub rejected your token (API keys tab).' : r.status === 403 || r.status === 429 ? 'GitHub rate limit hit. Add a GitHub token in the API keys tab for 5,000/hour.' : null) },
       { n: 'GitLab', link: u => `https://gitlab.com/${u}`, url: u => `https://gitlab.com/api/v4/users?username=${enc(u)}`, parse: r => !r.ok ? ERR() : Array.isArray(r.body) && r.body.length ? FOUND([['Name', r.body[0].name], ['State', r.body[0].state]], { avatar: r.body[0].avatar_url }) : NONE() },
-      { n: 'Keybase', link: u => `https://keybase.io/${u}`, url: u => `https://keybase.io/_/api/1.0/user/lookup.json?usernames=${enc(u)}&fields=basics,profile,proofs_summary`, parse: r => {
+      { n: 'Keybase', hint: 'may block browsers', link: u => `https://keybase.io/${u}`, url: u => `https://keybase.io/_/api/1.0/user/lookup.json?usernames=${enc(u)}&fields=basics,profile,proofs_summary`, parse: r => {
         const t = r.body && r.body.them && r.body.them[0];
         if (!r.ok && r.status !== 404) return ERR(); if (!t) return NONE();
         const proofs = ((t.proofs_summary && t.proofs_summary.all) || []).map(p => `${p.proof_type}: ${p.nametag}`);
@@ -963,15 +1164,21 @@ const LIVE_DEFS = {
       { n: 'Mastodon (.social)', link: u => `https://mastodon.social/@${u}`, url: u => `https://mastodon.social/api/v1/accounts/lookup?acct=${enc(u)}`, parse: r => r.status === 404 ? NONE('Only checks mastodon.social; other servers may host this handle.') : r.ok ? FOUND([['Display name', r.body.display_name], ['Bio', stripHtml(r.body.note)], ['Joined', fmtDate(r.body.created_at)], ['Followers', r.body.followers_count], ...((r.body.fields || []).map(f => [f.name, stripHtml(f.value)]))], { avatar: r.body.avatar_static }) : ERR() },
       { n: 'Bluesky', link: u => `https://bsky.app/profile/${u.includes('.') ? u : u + '.bsky.social'}`, url: u => `https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile?actor=${enc(u.includes('.') ? u : u + '.bsky.social')}`, parse: r => r.status === 400 ? NONE('Checked the .bsky.social handle; custom-domain handles differ.') : r.ok ? FOUND([['Display name', r.body.displayName], ['Bio', r.body.description], ['Followers', r.body.followersCount], ['Posts', r.body.postsCount], ['Joined', fmtDate(r.body.createdAt)]], { avatar: r.body.avatar }) : ERR() },
       { n: 'Wikipedia (en)', link: u => `https://en.wikipedia.org/wiki/Special:Contributions/${u}`, url: u => `https://en.wikipedia.org/w/api.php?action=query&list=users&ususers=${enc(u)}&usprop=editcount%7Cregistration&format=json&origin=*`, parse: r => { const x = r.ok && r.body.query && r.body.query.users && r.body.query.users[0]; if (!x) return ERR(); return ('missing' in x || 'invalid' in x) ? NONE() : FOUND([['Edits', x.editcount], ['Registered', fmtDate(x.registration)]]); } },
-      { n: 'Reddit', link: u => `https://www.reddit.com/user/${u}`, url: u => `https://www.reddit.com/user/${enc(u)}/about.json`, parse: r => r.status === 404 ? NONE() : r.ok && r.body.data ? (r.body.data.is_suspended ? FOUND([['Status', 'suspended']]) : FOUND([['Display name', r.body.data.subreddit && r.body.data.subreddit.title], ['Bio', r.body.data.subreddit && r.body.data.subreddit.public_description], ['Karma', r.body.data.total_karma ?? ((r.body.data.link_karma || 0) + (r.body.data.comment_karma || 0))], ['Joined', fmtDate(r.body.data.created_utc)]])) : ERR() },
-      { n: 'DEV Community', link: u => `https://dev.to/${u}`, url: u => `https://dev.to/api/users/by_username?url=${enc(u)}`, parse: r => r.status === 404 ? NONE() : r.ok ? FOUND([['Name', r.body.name], ['Summary', r.body.summary], ['Location', r.body.location], ['Website', r.body.website_url], ['GitHub', r.body.github_username], ['X / Twitter', r.body.twitter_username], ['Joined', r.body.joined_at]], { avatar: r.body.profile_image }) : ERR() },
+      { n: 'Reddit', hint: 'usually blocks browsers', link: u => `https://www.reddit.com/user/${u}`, url: u => `https://www.reddit.com/user/${enc(u)}/about.json`, parse: r => r.status === 404 ? NONE() : r.ok && r.body.data ? (r.body.data.is_suspended ? FOUND([['Status', 'suspended']]) : FOUND([['Display name', r.body.data.subreddit && r.body.data.subreddit.title], ['Bio', r.body.data.subreddit && r.body.data.subreddit.public_description], ['Karma', r.body.data.total_karma ?? ((r.body.data.link_karma || 0) + (r.body.data.comment_karma || 0))], ['Joined', fmtDate(r.body.data.created_utc)]])) : ERR() },
+      { n: 'DEV Community', hint: 'may block browsers', link: u => `https://dev.to/${u}`, url: u => `https://dev.to/api/users/by_username?url=${enc(u)}`, parse: r => r.status === 404 ? NONE() : r.ok ? FOUND([['Name', r.body.name], ['Summary', r.body.summary], ['Location', r.body.location], ['Website', r.body.website_url], ['GitHub', r.body.github_username], ['X / Twitter', r.body.twitter_username], ['Joined', r.body.joined_at]], { avatar: r.body.profile_image }) : ERR() },
       { n: 'npm', link: u => `https://www.npmjs.com/~${u}`, url: u => `https://registry.npmjs.org/-/v1/search?text=maintainer:${enc(u)}&size=5`, parse: r => !r.ok ? ERR() : r.body.total > 0 ? FOUND([['Packages maintained', r.body.total], ['Examples', r.body.objects.map(o => o.package.name).join(', ')]]) : NONE('No published packages (the account may still exist).') },
-      { n: 'Codeberg', link: u => `https://codeberg.org/${u}`, url: u => `https://codeberg.org/api/v1/users/${enc(u)}`, parse: r => r.status === 404 ? NONE() : r.ok ? FOUND([['Name', r.body.full_name], ['Location', r.body.location], ['Website', r.body.website], ['Bio', r.body.description], ['Joined', fmtDate(r.body.created)]], { avatar: r.body.avatar_url }) : ERR() },
+      { n: 'Codeberg', hint: 'usually blocks browsers', link: u => `https://codeberg.org/${u}`, url: u => `https://codeberg.org/api/v1/users/${enc(u)}`, parse: r => r.status === 404 ? NONE() : r.ok ? FOUND([['Name', r.body.full_name], ['Location', r.body.location], ['Website', r.body.website], ['Bio', r.body.description], ['Joined', fmtDate(r.body.created)]], { avatar: r.body.avatar_url }) : ERR() },
+      { n: 'YouTube', need: ['gkey'], hint: 'Google key', link: u => `https://www.youtube.com/@${u}`, run: async () => {
+        const r = await gapi(`https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&forHandle=${enc('@' + D.user)}`); if (!r.ok) return gErr(r);
+        const c = r.body.items && r.body.items[0]; if (!c) return NONE('No channel with this @handle.');
+        const sn = c.snippet || {}, st = c.statistics || {};
+        return FOUND([['Channel', sn.title], ['Handle', sn.customUrl], ['About', sn.description], ['Country', sn.country], ['Created', fmtDate(sn.publishedAt)], ['Stats', [st.subscriberCount != null && !st.hiddenSubscriberCount ? `${st.subscriberCount} subscribers` : '', st.videoCount != null ? `${st.videoCount} videos` : ''].filter(Boolean).join(' · ')]], { avatar: sn.thumbnails && sn.thumbnails.default && sn.thumbnails.default.url });
+      } },
     ],
   },
   email: {
     title: 'Email analysis', need: ['email'], key: () => D.email,
-    sub: 'Syntax, provider class, MX records (Google DNS-over-HTTPS), Gravatar (sends only a SHA-256 hash), PGP keys (keys.openpgp.org) and domain age (RDAP).',
+    sub: 'Syntax, provider class, MX records (Google DNS-over-HTTPS), Gravatar (sends only a SHA-256 hash), PGP keys (keys.openpgp.org), domain age (RDAP), and Google results with a Google key + search engine ID.',
     checks: [
       { n: 'Classification', local: () => {
         const dom = D.emailDomain; const cls = DISPOSABLE.has(dom) ? ['Disposable / temporary inbox', 'bad'] : RELAY[dom] ? [`Privacy relay alias (${RELAY[dom]}): forwards to a hidden real inbox`, 'info'] : WEBMAIL.has(dom) ? ['Free webmail provider', 'info'] : ['Custom / organizational domain: may identify employer or personal site', 'found'];
@@ -996,6 +1203,7 @@ const LIVE_DEFS = {
         return ok ? FOUND([['Avatar', 'Public Gravatar exists: reverse-search the image in the Images tab'], ['Image URL', src]], { avatar: src, pivotImg: src }) : ok === false ? NONE('No Gravatar for this address.') : ERR('Timed out.');
       } },
       { n: 'PGP key', link: () => 'https://keys.openpgp.org/search?q=' + enc(D.email), url: () => `https://keys.openpgp.org/vks/v1/by-email/${enc(D.email)}`, accept: 'application/pgp-keys', parse: r => r.status === 404 ? NONE('No verified key on keys.openpgp.org.') : r.ok ? FOUND([['Key', 'A verified public key exists for this address'], ['Size', `${String(r.body).length} bytes armored`]]) : ERR() },
+      cseCheck('Google web mentions', () => qt(D.email)),
       { n: 'Domain age (RDAP)', skip: () => WEBMAIL.has(D.emailDomain) || !!RELAY[D.emailDomain] ? 'Skipped: webmail/relay domain.' : null, link: () => 'https://lookup.icann.org/en/lookup?name=' + enc(D.emailDomain), url: () => `https://rdap.org/domain/${enc(D.emailDomain)}`, parse: r => rdapParse(r) },
     ],
   },
@@ -1046,7 +1254,7 @@ const LIVE_DEFS = {
   },
   name: {
     title: 'Public-record APIs', need: ['name'], key: () => D.name + '|' + D.state,
-    sub: 'Wikipedia (notable people), OpenAlex (researchers & affiliations) and the FEC (federal political donations list name, city, employer and occupation). FEC uses the shared DEMO_KEY, so it rate-limits quickly.',
+    sub: 'Wikipedia (notable people), OpenAlex (researchers & affiliations) and the FEC (federal political donations list name, city, employer and occupation). FEC uses the shared DEMO_KEY, so it rate-limits quickly. With a Google key: Knowledge Graph, YouTube channels and Google web results.',
     checks: [
       { n: 'Wikipedia', link: () => 'https://en.wikipedia.org/w/index.php?search=' + enc(nameQ()), url: () => `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${enc(nameQ())}&srlimit=5&format=json&origin=*`, parse: r => {
         if (!r.ok || !r.body.query) return ERR(); const s = r.body.query.search || [];
@@ -1056,7 +1264,18 @@ const LIVE_DEFS = {
         if (!r.ok) return ERR(); const s = r.body.results || [];
         return s.length ? FOUND([], { list: s.map(a => { const inst = (a.last_known_institutions || (a.last_known_institution ? [a.last_known_institution] : [])).map(i => i.display_name).join('; '); return { t: a.display_name, s: [inst, `${a.works_count} works`, a.orcid ? 'ORCID ' + a.orcid.split('/').pop() : ''].filter(Boolean).join(' · '), u: a.id }; }), label: plural(r.body.meta ? r.body.meta.count : s.length, 'author') }) : NONE('No published authors with this name.');
       } },
-      { n: 'FEC donations', link: () => `https://www.fec.gov/data/receipts/individual-contributions/?contributor_name=${enc(D.last + ', ' + D.first)}`, url: () => `https://api.open.fec.gov/v1/schedules/schedule_a/?api_key=DEMO_KEY&contributor_name=${enc(D.last + ', ' + D.first)}${D.state && D.isUS ? '&contributor_state=' + enc(D.state) : ''}&is_individual=true&per_page=8&sort=-contribution_receipt_date`, parse: r => {
+      { n: 'Google Knowledge Graph', need: ['gkey'], hint: 'Google key', link: () => google(nameQ()), run: async () => {
+        const r = await gapi(`https://kgsearch.googleapis.com/v1/entities:search?query=${enc(D.name)}&types=Person&limit=5`); if (!r.ok) return gErr(r);
+        const s = (r.body.itemListElement || []).map(x => x.result || {});
+        return s.length ? FOUND([], { list: s.map(x => ({ t: x.name + (x.description ? ` (${x.description})` : ''), s: x.detailedDescription ? x.detailedDescription.articleBody : '', u: (x.detailedDescription && x.detailedDescription.url) || x.url })), label: plural(s.length, 'entity', 'entities') }) : NONE('No notable person with this name in Google\'s Knowledge Graph.');
+      } },
+      { n: 'YouTube channels', need: ['gkey'], hint: 'Google key · 100 quota units', link: () => `https://www.youtube.com/results?search_query=${enc(nameQ())}&sp=EgIQAg%253D%253D`, run: async () => {
+        const r = await gapi(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&maxResults=5&q=${enc(D.name)}`); if (!r.ok) return gErr(r);
+        const s = r.body.items || [];
+        return s.length ? FOUND([], { list: s.map(x => ({ t: x.snippet.channelTitle || x.snippet.title, s: [x.snippet.description, 'since ' + fmtDate(x.snippet.publishedAt)].filter(Boolean).join(' · '), u: 'https://www.youtube.com/channel/' + (x.id.channelId || x.snippet.channelId) })), label: plural(s.length, 'channel') }) : NONE('No channels matched.');
+      } },
+      cseCheck('Google web results', () => nameQ() + (D.city ? ' ' + D.city : '')),
+      { n: 'FEC donations', hint: 'shared demo key', link: () => `https://www.fec.gov/data/receipts/individual-contributions/?contributor_name=${enc(D.last + ', ' + D.first)}`, url: () => `https://api.open.fec.gov/v1/schedules/schedule_a/?api_key=DEMO_KEY&contributor_name=${enc(D.last + ', ' + D.first)}${D.state && D.isUS ? '&contributor_state=' + enc(D.state) : ''}&is_individual=true&per_page=8&sort=-contribution_receipt_date`, parse: r => {
         if (r.status === 429) return ERR('FEC DEMO_KEY rate limit reached; use the link instead.'); if (!r.ok) return ERR(); const s = r.body.results || [];
         return s.length ? FOUND([], { list: s.map(c => ({ t: `${c.contributor_name}: ${[c.contributor_city, c.contributor_state].filter(Boolean).join(', ')}`, s: [c.contributor_employer, c.contributor_occupation, c.contribution_receipt_date && c.contribution_receipt_date.slice(0, 10), c.contribution_receipt_amount != null ? '$' + c.contribution_receipt_amount : '', c.committee && c.committee.name ? '→ ' + c.committee.name : ''].filter(Boolean).join(' · ') })), label: plural(r.body.pagination ? r.body.pagination.count : s.length, 'record') }) : NONE('No itemized federal contributions (only ≥ $200 are itemized).');
       } },
@@ -1081,13 +1300,15 @@ async function runLive(kind) {
     let res;
     try {
       const skip = c.skip && c.skip();
-      if (skip) res = { state: 'none', label: 'skipped', note: skip };
+      if (c.need && !needOk(c.need)) res = { state: 'info', label: 'needs key', note: `Add a ${needMissing(c.need).join(', ')} in the API keys tab to enable this check.`, toKeys: true };
+      else if (skip) res = { state: 'none', label: 'skipped', note: skip };
       else if (c.local) res = c.local();
       else if (c.run) res = await c.run();
-      else res = c.parse(await getJSON(c.url(D.user), { accept: c.accept }));
+      else res = c.parse(await getJSON(c.url(D.user), { accept: c.accept, headers: c.headers ? c.headers() : {} }));
     } catch (e) { res = ERR(e && e.name === 'AbortError' ? 'Timed out.' : null); }
     let link = null; try { link = c.link ? c.link(D.user) : null; } catch (e) {}
-    if (LIVE[kind] === st) { st.rows[i] = { n: c.n, link, ...res }; refreshLive(kind); }
+    const hint = typeof c.hint === 'function' ? c.hint() : c.hint;
+    if (LIVE[kind] === st) { st.rows[i] = { n: c.n, link, hint, ...res }; refreshLive(kind); }
   }));
   if (LIVE[kind] === st) { st.running = false; refreshLive(kind); }
 }
@@ -1118,13 +1339,21 @@ function liveRow(r, panelTitle) {
     const s = Array.isArray(v) ? v.join(', ') : String(v); const u = /^https?:\/\//.test(s) && safeUrl(s);
     return [h('dt', { text: k }), h('dd', null, u ? h('a', { href: u, target: '_blank', rel: 'noopener noreferrer', text: s }) : s)];
   })));
-  if (r.list) detail.append(h('div', null, r.list.map(x => h('div', { style: 'margin:0 0 7px' }, x.u && safeUrl(x.u) ? h('a', { href: safeUrl(x.u), target: '_blank', rel: 'noopener noreferrer', style: 'font-weight:600', text: x.t }) : h('b', { text: x.t }), x.s ? h('div', { class: 'small muted', text: x.s }) : null))));
+  if (r.list) detail.append(h('div', null, r.list.map(x => { const u = x.u && safeUrl(x.u); return h('div', { style: 'margin:0 0 7px;display:flex;gap:6px;align-items:flex-start' },
+    h('div', { style: 'flex:1;min-width:0' }, u ? h('a', { href: u, target: '_blank', rel: 'noopener noreferrer', style: 'font-weight:600', text: x.t }) : h('b', { text: x.t }), x.s ? h('div', { class: 'small muted', text: x.s }) : null),
+    u ? pinLink(x.t, u, `Live checks › ${r.n}`) : null); })));
   if (r.note) detail.append(h('div', { class: 'small muted', text: r.note }));
+  if (r.toKeys) detail.append(h('button', { class: 'btn sm', style: 'margin-top:6px', text: 'Open API keys', onclick: () => go('keys') }));
   if (r.pivotImg) detail.append(h('button', { class: 'btn sm', style: 'margin-top:6px', text: 'Use as photo URL', onclick: () => { setField('img', r.pivotImg); go('images'); } }));
   const actions = [];
   if (link) actions.push(h('a', { href: link, target: '_blank', rel: 'noopener noreferrer', text: 'open ↗' }));
   if (link && r.state === 'found') actions.push(h('a', { href: '#', text: isPinned(link) ? 'pinned ✓' : 'pin to case', onclick: e => { e.preventDefault(); pin(`${r.n} (${panelTitle})`, link, 'Live checks'); e.target.textContent = isPinned(link) ? 'pinned ✓' : 'pin to case'; } }));
-  return h('div', { class: 'lrow' }, h('div', { class: 'ln' }, r.n, ...actions), h('span', { class: 'badge ' + cls, text: r.label || lbl }), detail);
+  return h('div', { class: 'lrow' }, h('div', { class: 'ln' }, r.n, r.hint ? h('span', { class: 'flaky', text: r.hint }) : null, ...actions), h('span', { class: 'badge ' + cls, text: r.label || lbl }), detail);
+}
+function pinLink(title, url, source) {
+  const b = h('button', { class: 'pinlink' + (isPinned(url) ? ' on' : ''), title: 'Pin to case file', text: isPinned(url) ? '✓ pinned' : '+ pin' });
+  b.onclick = () => { pin(title, url, source); b.textContent = isPinned(url) ? '✓ pinned' : '+ pin'; b.classList.toggle('on', isPinned(url)); };
+  return b;
 }
 function renderLiveAll() {
   const any = Object.values(LIVE_DEFS).some(d => needOk(d.need));
@@ -1224,7 +1453,59 @@ function renderDorkBuilder() {
       inp('after', 'after (YYYY-MM-DD)'), inp('before', 'before (YYYY-MM-DD)')),
     h('div', { class: 'row', style: 'margin-top:8px' }, h('label', { class: 'row small muted', style: 'gap:6px' }, ex, 'Exact phrase'), h('span', { style: 'flex:1' }), eng,
       h('button', { class: 'btn sm primary', text: 'Search', onclick: () => { const q = build(); if (q) window.open(engines[eng.value](q), '_blank', 'noopener,noreferrer'); } }),
-      h('button', { class: 'btn sm', text: 'Copy', onclick: () => copy(build(), 'Query copied') })), out);
+      h('button', { class: 'btn sm', text: 'Copy', onclick: () => copy(build(), 'Query copied') }),
+      D.has.cse ? h('button', { class: 'btn sm', text: 'Run via API', title: 'Show Google results below using your API key', onclick: () => { const q = build(); if (q) gsRun(q); } }) : null), out);
+}
+
+/* ============================================================
+   Google results via Custom Search JSON API (Search tab)
+   ============================================================ */
+const GS = { q: '', start: 1, res: null, err: null, running: false };
+function gsQueries() {
+  const qs = [];
+  for (const g of MODULES.find(m => m.id === 'search').groups) for (const it of g.items) if (it.dork && needOk(it.need)) qs.push(it.dork());
+  if (D.has.phone) qs.push(phoneQ());
+  return [...new Set(qs)];
+}
+async function gsRun(q, start = 1) {
+  Object.assign(GS, { q, start, running: true, err: null });
+  refreshGs();
+  const el = $('.gsearch'); if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  try { const r = await cseSearch(q, start); if (r.ok) GS.res = r.body; else { GS.res = null; GS.err = gErr(r).note; } }
+  catch (e) { GS.res = null; GS.err = e && e.name === 'AbortError' ? 'Timed out.' : 'Request failed (network or blocked).'; }
+  GS.running = false; refreshGs();
+}
+function refreshGs() { for (const el of $$('.gsearch')) el.replaceWith(gsPanel()); }
+function gsPanel() {
+  const el = h('section', { class: 'live gsearch' }, h('header', null, h('h3', { text: 'Google results via API' }),
+    h('span', { class: 'sub', text: 'Runs a query through your Custom Search JSON API key and lists results here, with pin buttons. Each run uses one query from your daily quota (100 free per day).' })));
+  if (!D.has.cse) {
+    el.append(h('div', { class: 'lempty' }, 'Add a Google API key and a Programmable Search Engine ID in the ', h('a', { href: '#', text: 'API keys tab', onclick: e => { e.preventDefault(); go('keys'); } }), ' to run searches here.'));
+    return el;
+  }
+  const qs = gsQueries();
+  const input = h('input', { class: 'inp', value: GS.q || qs[0] || '', placeholder: 'Query (operators like site: and filetype: work)', 'aria-label': 'Query' });
+  const sel = h('select', { class: 'inp', style: 'max-width:260px', 'aria-label': 'Prepared queries' }, h('option', { value: '', text: `Prepared queries (${qs.length})…` }), qs.map(q => h('option', { value: q, text: q.length > 70 ? q.slice(0, 68) + '…' : q })));
+  sel.onchange = () => { if (sel.value) input.value = sel.value; };
+  input.onkeydown = e => { if (e.key === 'Enter') gsRun(input.value.trim()); };
+  el.append(h('div', { class: 'row', style: 'padding:10px 14px' }, sel, h('div', { style: 'flex:1;min-width:200px' }, input),
+    h('button', { class: 'btn sm primary', disabled: GS.running, text: GS.running ? 'Searching…' : 'Search', onclick: () => { const q = input.value.trim(); if (q) gsRun(q); } })));
+  if (GS.err) el.append(h('div', { class: 'stale', text: GS.err }));
+  if (GS.res) {
+    const items = GS.res.items || [], total = +((GS.res.searchInformation || {}).totalResults || 0);
+    el.append(h('div', { class: 'small muted', style: 'padding:0 14px 8px' }, `About ${total.toLocaleString()} results for `, h('span', { class: 'mono', text: GS.q }), items.length ? ` (showing ${GS.start}–${GS.start + items.length - 1})` : ''));
+    if (!items.length) el.append(h('div', { class: 'lempty', text: 'No results.' }));
+    for (const x of items) {
+      const u = safeUrl(x.link); if (!u) continue;
+      el.append(h('div', { class: 'gres' }, h('div', null, h('a', { class: 'gt', href: u, target: '_blank', rel: 'noopener noreferrer', text: x.title }), h('div', { class: 'gu', text: u }), x.snippet ? h('div', { class: 'small muted', text: x.snippet }) : null),
+        pinLink(x.title, u, `Google API › ${GS.q}`)));
+    }
+    const nav = h('div', { class: 'row', style: 'padding:10px 14px;border-top:1px solid var(--line)' });
+    if (GS.start > 1) nav.append(h('button', { class: 'btn sm', text: '← Previous 10', onclick: () => gsRun(GS.q, Math.max(1, GS.start - 10)) }));
+    if (items.length === 10 && GS.start < 91 && total > GS.start + 9) nav.append(h('button', { class: 'btn sm', text: 'Next 10 →', onclick: () => gsRun(GS.q, GS.start + 10) }));
+    if (nav.children.length) el.append(nav);
+  }
+  return el;
 }
 
 /* ============================================================
@@ -1270,6 +1551,17 @@ function parseExif(buf) {
     if (marker === 0xFFE1 && off + 10 <= v.byteLength && v.getUint32(off + 4) === 0x45786966) return readTiff(v, off + 10);
     off += 2 + len;
   }
+  return null;
+}
+function findExif(buf) {
+  const u = new Uint8Array(buf), v = new DataView(buf), type = sniffType(buf);
+  const tag4 = o => String.fromCharCode(u[o], u[o + 1], u[o + 2], u[o + 3]);
+  const isTiff = o => o + 8 <= u.length && ((u[o] === 0x49 && u[o + 1] === 0x49 && u[o + 2] === 0x2A && u[o + 3] === 0) || (u[o] === 0x4D && u[o + 1] === 0x4D && u[o + 2] === 0 && u[o + 3] === 0x2A));
+  if (type === 'JPEG') { const r = parseExif(buf); if (r) return r; }
+  if (type === 'PNG') for (let o = 8; o + 12 <= u.length;) { const len = v.getUint32(o), t = tag4(o + 4); if (t === 'eXIf' && isTiff(o + 8)) return readTiff(v, o + 8); if (t === 'IEND') break; o += 12 + len; }
+  if (type === 'WebP') for (let o = 12; o + 8 <= u.length;) { const t = tag4(o), len = v.getUint32(o + 4, true); if (t === 'EXIF') { const d = isTiff(o + 8) ? o + 8 : o + 14; if (isTiff(d)) return readTiff(v, d); } o += 8 + len + (len & 1); }
+  // HEIC/AVIF (iPhone default) and anything else: find "Exif\0\0" followed by a TIFF header.
+  for (let i = 0; i + 14 < u.length; i++) if (u[i] === 0x45 && u[i + 1] === 0x78 && u[i + 2] === 0x69 && u[i + 3] === 0x66 && u[i + 4] === 0 && u[i + 5] === 0 && isTiff(i + 6)) { const r = readTiff(v, i + 6); if (r && Object.keys(r).length) return r; }
   return null;
 }
 function readTiff(v, t) {
@@ -1338,56 +1630,133 @@ function buildImageLab() {
   async function analyze(f) {
     out.textContent = '';
     const buf = await f.arrayBuffer(); const type = sniffType(buf); const url = URL.createObjectURL(f);
-    const [hash, dims] = await Promise.all([sha256Hex(buf), new Promise(res => { const i = new Image(); i.onload = () => res(`${i.naturalWidth} × ${i.naturalHeight}`); i.onerror = () => res('not decodable in this browser'); i.src = url; })]);
-    const ex = type === 'JPEG' ? parseExif(buf) : null;
+    let decodable = false;
+    const [hash, dims] = await Promise.all([sha256Hex(buf), new Promise(res => { const i = new Image(); i.onload = () => { decodable = true; res(`${i.naturalWidth} × ${i.naturalHeight}`); }; i.onerror = () => res('preview not supported by this browser'); i.src = url; })]);
+    let ex = null; try { ex = findExif(buf); } catch (e) {}
     const rows = [['File', f.name], ['Format', type], ['Size', `${(f.size / 1024).toFixed(1)} KB`], ['Dimensions', dims], ['Last modified', f.lastModified ? new Date(f.lastModified).toLocaleString() : ''], ['SHA-256', hash]];
     const meta = ex ? Object.entries(ex).filter(([k]) => !k.startsWith('_')) : [];
     const gps = ex && ex._lat != null ? [ex._lat, ex._lon] : null;
     const side = h('div');
     side.append(h('dl', { class: 'kv' }, rows.filter(r => r[1]).flatMap(([k, v]) => [h('dt', { text: k }), h('dd', { class: k === 'SHA-256' ? 'mono' : '', text: v })])));
     side.append(h('h3', { style: 'margin:14px 0 6px;font-size:13px', text: 'Embedded metadata' }));
-    if (type !== 'JPEG') side.append(h('p', { class: 'small muted', text: `EXIF parsing here covers JPEG. For ${type}, use exiftool (CLI toolkit) or Jeffrey's viewer below.` }));
-    else if (!meta.length && !gps) side.append(h('p', { class: 'small muted', text: 'No EXIF found. Most social platforms strip it on upload; originals from cameras and phones usually keep it.' }));
+    if (!meta.length && !gps) side.append(h('p', { class: 'small muted', text: 'No EXIF found. Most social platforms strip it on upload; originals from cameras and phones usually keep it. For XMP/IPTC or video, use exiftool (CLI toolkit) or Jeffrey\'s viewer below.' }));
     else side.append(h('dl', { class: 'kv' }, meta.flatMap(([k, v]) => [h('dt', { text: k }), h('dd', { text: Array.isArray(v) ? v.join(', ') : String(v) })])));
     if (gps) side.append(h('div', { class: 'card', style: 'margin:12px 0 0;border-color:var(--warn)' }, h('h3', { text: `📍 GPS: ${gps[0]}, ${gps[1]}` }),
       h('p', { class: 'sub', text: 'This photo embeds the location where it was taken.' }),
       h('div', { class: 'row' }, h('a', { class: 'btn sm', href: `https://www.google.com/maps/search/?api=1&query=${gps[0]},${gps[1]}`, target: '_blank', rel: 'noopener noreferrer', text: 'Google Maps ↗' }),
         h('a', { class: 'btn sm', href: `https://www.openstreetmap.org/?mlat=${gps[0]}&mlon=${gps[1]}#map=17/${gps[0]}/${gps[1]}`, target: '_blank', rel: 'noopener noreferrer', text: 'OpenStreetMap ↗' }))));
+    const why = decodable ? null : `This browser can't decode ${type} images, so it can't re-encode a clean copy. Convert to JPEG first, or use: exiftool -all= photo`;
+    const visionOk = D.has.gkey && decodable && f.size <= 7 * 1024 * 1024;
     side.append(h('div', { class: 'row', style: 'margin-top:12px' },
-      h('button', { class: 'btn sm', text: 'Download scrubbed copy', title: 'Re-encodes the pixels only, dropping all metadata', onclick: () => scrub(url, f.name) }),
-      h('button', { class: 'btn sm', text: 'Copy report', onclick: () => copy([...rows, ...meta, ...(gps ? [['GPS', gps.join(', ')]] : [])].filter(r => r[1]).map(([k, v]) => `${k}: ${v}`).join('\n'), 'Report copied') })));
-    out.append(h('div', { class: 'imgout' }, h('img', { src: url, alt: 'Selected image preview' }), side));
+      h('button', { class: 'btn sm', disabled: !decodable, title: why || 'Re-encodes the pixels only, dropping all metadata', text: 'Download scrubbed copy', onclick: () => scrub(url, f.name, type) }),
+      h('button', { class: 'btn sm', text: 'Copy report', onclick: () => copy([...rows, ...meta, ...(gps ? [['GPS', gps.join(', ')]] : [])].filter(r => r[1]).map(([k, v]) => `${k}: ${v}`).join('\n'), 'Report copied') }),
+      D.has.gkey ? h('button', { class: 'btn sm', disabled: !visionOk, title: visionOk ? 'Uploads this file to Google Cloud Vision for reverse image search' : (decodable ? 'Vision accepts files up to about 7 MB' : `Google Vision doesn't accept ${type}`), text: 'Send to Google Vision…',
+        onclick: () => { if (!confirm('This uploads the photo to Google Cloud Vision (your API key) to find where it appears online. Continue?')) return; const r = new FileReader(); r.onload = () => runVision({ content: String(r.result).split(',')[1] }, `local file ${f.name}`); r.readAsDataURL(f); } }) : null));
+    if (why) side.append(h('p', { class: 'small muted', style: 'margin-top:6px', text: why }));
+    out.append(h('div', { class: 'imgout' }, decodable ? h('img', { src: url, alt: 'Selected image preview' }) : h('div', { class: 'empty', text: `No preview: this browser can't display ${type}.` }), side));
   }
-  function scrub(url, name) {
-    const i = new Image(); i.onload = () => {
+  function scrub(url, name, type) {
+    // Canvas re-encode keeps pixels only. JPEG stays JPEG; everything else becomes PNG so transparency survives.
+    const mime = type === 'JPEG' ? 'image/jpeg' : 'image/png', ext = type === 'JPEG' ? 'jpg' : 'png';
+    const i = new Image();
+    i.onerror = () => banner(`This browser can't decode ${type}, so no clean copy could be made. Use: exiftool -all= "${name}"`);
+    i.onload = () => {
       const c = h('canvas'); c.width = i.naturalWidth; c.height = i.naturalHeight; c.getContext('2d').drawImage(i, 0, 0);
-      c.toBlob(b => { const a = h('a', { href: URL.createObjectURL(b), download: name.replace(/\.[^.]+$/, '') + '-clean.jpg' }); document.body.append(a); a.click(); setTimeout(() => a.remove(), 500); toast('Scrubbed copy saved'); }, 'image/jpeg', 0.92);
-    }; i.src = url;
+      c.toBlob(b => {
+        if (!b) { banner('The browser could not encode the image (it may be too large).'); return; }
+        const a = h('a', { href: URL.createObjectURL(b), download: name.replace(/\.[^.]+$/, '') + '-clean.' + ext }); document.body.append(a); a.click(); setTimeout(() => a.remove(), 500); toast('Scrubbed copy saved');
+      }, mime, 0.92);
+    };
+    i.src = url;
   }
-  return h('div', { class: 'card' }, h('h3', { text: 'Photo metadata lab' }), h('p', { class: 'sub', text: 'Reads camera make/model, serial numbers, original timestamps, owner name and GPS coordinates from JPEG EXIF, and computes a SHA-256 for evidence logs.' }), drop, file, out);
+  return h('div', { class: 'card' }, h('h3', { text: 'Photo metadata lab' }), h('p', { class: 'sub', text: 'Reads camera make/model, serial numbers, original timestamps, owner name and GPS coordinates from EXIF in JPEG, HEIC (iPhone), PNG and WebP files, and computes a SHA-256 for evidence logs.' }), drop, file, out);
+}
+
+/* ============================================================
+   Address preview: Maps Embed + Street View Static (People & records tab)
+   ============================================================ */
+const ADDR = { q: '', el: null };
+function addrPanel() {
+  if (!D.has.addr) return null;
+  const card = h('div', { class: 'card' }, h('h3', { text: 'Address preview' }));
+  if (!D.has.gkey) { card.append(h('p', { class: 'sub', style: 'margin:0' }, 'Add a Google API key in the ', h('a', { href: '#', text: 'API keys tab', onclick: e => { e.preventDefault(); go('keys'); } }), ' to see a map and a Street View photo of this address here.')); return card; }
+  const q = D.fullAddr, key = enc(KEYS.google.trim());
+  const body = h('div');
+  const load = () => {
+    const sv = h('img', { alt: `Street View of ${q}`, referrerpolicy: 'origin', src: `https://maps.googleapis.com/maps/api/streetview?size=640x320&fov=80&location=${enc(q)}&return_error_code=true&key=${key}` });
+    sv.onerror = () => sv.replaceWith(h('div', { class: 'empty', style: 'height:260px;display:grid;place-items:center', text: 'No Street View image: there is no imagery here, or the Street View Static API is not enabled for your key.' }));
+    body.textContent = '';
+    body.append(h('div', { class: 'mapbox' }, h('iframe', { title: 'Map of ' + q, referrerpolicy: 'origin', allowfullscreen: true, src: `https://www.google.com/maps/embed/v1/place?key=${key}&q=${enc(q)}` }), sv));
+    ADDR.q = q; ADDR.el = body;
+  };
+  card.append(h('p', { class: 'sub', text: `${q}. Uses the Maps Embed API (free) and Street View Static API (one billable image per load after the monthly free allowance). Imagery can be years old; check the capture date in Google Maps.` }));
+  if (ADDR.q === q && ADDR.el) card.append(ADDR.el);
+  else { body.append(h('button', { class: 'btn sm primary', text: 'Load map & Street View', onclick: load })); card.append(body); }
+  return card;
+}
+
+/* ============================================================
+   Google Cloud Vision web detection (Images tab)
+   ============================================================ */
+const VIS = { label: '', running: false, res: null, err: null };
+async function runVision(image, label) {
+  Object.assign(VIS, { label, running: true, res: null, err: null }); refreshVision();
+  try {
+    const r = await gapi('https://vision.googleapis.com/v1/images:annotate', { requests: [{ image, features: [{ type: 'WEB_DETECTION', maxResults: 20 }] }] });
+    const resp = r.body && r.body.responses && r.body.responses[0];
+    if (!r.ok) VIS.err = gErr(r).note;
+    else if (resp && resp.error) VIS.err = 'Vision could not process the image: ' + resp.error.message;
+    else VIS.res = (resp && resp.webDetection) || {};
+  } catch (e) { VIS.err = e && e.name === 'AbortError' ? 'Timed out.' : 'Request failed (network or blocked).'; }
+  VIS.running = false; refreshVision();
+}
+function refreshVision() { for (const el of $$('.vision')) el.replaceWith(visionPanel()); }
+function visionPanel() {
+  const el = h('section', { class: 'live vision' }, h('header', null, h('h3', { text: 'Google Vision reverse image search' }),
+    D.has.gkey && D.has.img ? h('button', { class: 'btn sm' + (VIS.res ? '' : ' primary'), disabled: VIS.running, text: VIS.running ? 'Analyzing…' : 'Analyze photo URL', onclick: () => runVision({ source: { imageUri: D.img } }, D.img) }) : null,
+    h('span', { class: 'sub', text: 'Google\'s web detection via your API key: pages that use the same photo, exact and partial copies, and Google\'s best-guess label. Needs the Cloud Vision API (1,000 images a month free; billing account required). A local file is sent only if you click "Send to Google Vision" in the lab above.' })));
+  if (!D.has.gkey) { el.append(h('div', { class: 'lempty' }, 'Add a Google API key in the ', h('a', { href: '#', text: 'API keys tab', onclick: e => { e.preventDefault(); go('keys'); } }), ' to enable.')); return el; }
+  if (VIS.running) { el.append(h('div', { class: 'lempty', text: `Analyzing ${VIS.label}…` })); return el; }
+  if (!VIS.label) { el.append(h('div', { class: 'lempty', text: D.has.img ? 'Not run yet.' : 'Enter a photo URL in the subject panel, or send a local file from the lab above.' })); return el; }
+  if (VIS.err) { el.append(h('div', { class: 'stale', text: VIS.err })); return el; }
+  const w = VIS.res || {};
+  const block = (title, kids) => kids && (!Array.isArray(kids) || kids.length) ? h('div', { class: 'lrow' }, h('div', { class: 'ln', text: title }), h('span'), h('div', { class: 'ld' }, kids)) : null;
+  const links = (arr, n) => (arr || []).slice(0, n).map(x => { const u = safeUrl(x.url); return u ? h('div', { style: 'display:flex;gap:6px;margin-bottom:4px' }, h('a', { href: u, target: '_blank', rel: 'noopener noreferrer', style: 'flex:1;min-width:0;overflow-wrap:anywhere', text: x.pageTitle ? stripHtml(x.pageTitle) : u }), pinLink(x.pageTitle ? stripHtml(x.pageTitle) : u, u, 'Google Vision')) : null; });
+  el.append(h('div', { class: 'small muted', style: 'padding:8px 14px' }, 'Results for ', h('span', { class: 'mono', text: VIS.label })));
+  const rows = [
+    block('Best guess', (w.bestGuessLabels || []).map(l => l.label).filter(Boolean).join(', ') || null),
+    block('Web entities', (w.webEntities || []).filter(e => e.description).length ? h('div', { class: 'chips' }, (w.webEntities || []).filter(e => e.description).slice(0, 12).map(e => h('a', { class: 'chip', href: google(qt(e.description)), target: '_blank', rel: 'noopener noreferrer', text: e.description }))) : null),
+    block(`Pages with this image (${(w.pagesWithMatchingImages || []).length})`, links(w.pagesWithMatchingImages, 15)),
+    block(`Exact copies (${(w.fullMatchingImages || []).length})`, links(w.fullMatchingImages, 8)),
+    block(`Partial matches (${(w.partialMatchingImages || []).length})`, links(w.partialMatchingImages, 5)),
+    block('Visually similar', links(w.visuallySimilarImages, 6)),
+  ].filter(Boolean);
+  if (!rows.length) el.append(h('div', { class: 'lempty', text: 'Google found no matches for this image.' }));
+  el.append(...rows);
+  return el;
 }
 
 /* ============================================================
    CLI toolkit
    ============================================================ */
 const CLI = [
-  { n: 'Sherlock', cat: 'Username', need: ['user'], repo: 'https://github.com/sherlock-project/sherlock', d: 'Hunts a username across 400+ social networks.', install: 'pipx install sherlock-project', run: () => [`sherlock ${sq(D.user)} --print-found`], bin: 'sherlock', script: () => ['sherlock', sq(D.user), '--print-found'] },
-  { n: 'Maigret', cat: 'Username', need: ['user'], repo: 'https://github.com/soxoj/maigret', d: 'Sherlock fork with 3,000+ sites, profile parsing and HTML/PDF reports.', install: 'pip3 install maigret', run: () => [`maigret ${sq(D.user)} --html`], bin: 'maigret', script: () => ['maigret', sq(D.user), '--html'] },
-  { n: 'Blackbird', cat: 'Username / email', need: ['user|email'], repo: 'https://github.com/p1ngul1n0/blackbird', d: 'Fast username and email search using WhatsMyName data.', install: 'git clone https://github.com/p1ngul1n0/blackbird && cd blackbird && pip install -r requirements.txt', run: () => [D.has.user && `python blackbird.py --username ${sq(D.user)}`, D.has.email && `python blackbird.py --email ${sq(D.email)}`].filter(Boolean) },
-  { n: 'socialscan', cat: 'Username / email', need: ['user|email'], repo: 'https://github.com/iojw/socialscan', d: 'Accurate availability checks on major platforms.', install: 'pip install socialscan', run: () => [`socialscan ${[D.has.user && sq(D.user), D.has.email && sq(D.email)].filter(Boolean).join(' ')}`], bin: 'socialscan', script: () => ['socialscan', ...[D.has.user && sq(D.user), D.has.email && sq(D.email)].filter(Boolean)] },
-  { n: 'Social Analyzer', cat: 'Username', need: ['user'], repo: 'https://github.com/qeeqbox/social-analyzer', d: 'Profile detection across 1,000+ sites with confidence scoring.', install: 'pip3 install social-analyzer', run: () => [`python3 -m social-analyzer --username ${sq(D.user)} --metadata`] },
-  { n: 'holehe', cat: 'Email', need: ['email'], repo: 'https://github.com/megadose/holehe', d: 'Checks which of 120+ sites an email is registered on via password-reset flows.', install: 'pip3 install holehe', run: () => [`holehe ${sq(D.email)} --only-used`], bin: 'holehe', script: () => ['holehe', sq(D.email), '--only-used'] },
-  { n: 'GHunt', cat: 'Email', need: ['email'], repo: 'https://github.com/mxrch/GHunt', d: 'Google account investigation: Gaia ID, Maps reviews, public calendar, profile photo.', install: 'pipx install ghunt && ghunt login', run: () => [`ghunt email ${sq(D.email)}`], bin: 'ghunt', script: () => ['ghunt', 'email', sq(D.email)] },
-  { n: 'Mosint', cat: 'Email', need: ['email'], repo: 'https://github.com/alpkeskin/mosint', d: 'Email OSINT: verification, social accounts, related domains, DNS.', install: 'go install -v github.com/alpkeskin/mosint/v3/cmd/mosint@latest', run: () => [`mosint ${sq(D.email)}`], bin: 'mosint', script: () => ['mosint', sq(D.email)] },
-  { n: 'GitFive', cat: 'GitHub', need: ['user|email'], repo: 'https://github.com/mxrch/GitFive', d: 'Deep GitHub profiling: emails from commits, linked identities, SSH keys.', install: 'pipx install gitfive && gitfive login', run: () => [D.has.user && `gitfive user ${sq(D.user)}`, D.has.email && `gitfive email ${sq(D.email)}`].filter(Boolean) },
-  { n: 'PhoneInfoga', cat: 'Phone', need: ['phone'], repo: 'https://github.com/sundowndev/phoneinfoga', d: 'Phone number scanner: carrier, line type, footprint dorks, numverify.', install: 'bash <(curl -sSL https://raw.githubusercontent.com/sundowndev/phoneinfoga/master/support/scripts/install)', run: () => [`phoneinfoga scan -n ${sq(D.ph.e164 || D.ph.digits)}`], bin: 'phoneinfoga', script: () => ['phoneinfoga', 'scan', '-n', sq(D.ph.e164 || D.ph.digits)] },
-  { n: 'Ignorant', cat: 'Phone', need: ['phone'], repo: 'https://github.com/megadose/ignorant', d: 'Checks whether a phone number is registered on Instagram, Snapchat and Amazon.', install: 'pip3 install ignorant', run: () => [`ignorant ${D.ph.cc || '1'} ${D.ph.national}`], bin: 'ignorant', script: () => ['ignorant', sq(D.ph.cc || '1'), sq(D.ph.national)] },
-  { n: 'theHarvester', cat: 'Domain', need: ['domain'], repo: 'https://github.com/laramies/theHarvester', d: 'Emails, names, subdomains and hosts for a domain from public sources.', install: 'sudo apt install theharvester   # Kali/Parrot; or clone the repo', run: () => [`theHarvester -d ${sq(D.domain)} -b all -l 500`], bin: 'theHarvester', script: () => ['theHarvester', '-d', sq(D.domain), '-b', 'all', '-l', '500'] },
-  { n: 'Metagoofil', cat: 'Domain', need: ['domain'], repo: 'https://github.com/opsdisk/metagoofil', d: 'Downloads public documents from a domain; exiftool then reveals authors and usernames.', install: 'git clone https://github.com/opsdisk/metagoofil && cd metagoofil && pip install -r requirements.txt', run: () => [`python metagoofil.py -d ${sq(D.domain)} -t pdf,docx,xlsx,pptx -l 50 -w -o docs`, 'exiftool -r -Author -Creator -LastModifiedBy docs'] },
-  { n: 'Instaloader', cat: 'Instagram', need: ['user'], repo: 'https://github.com/instaloader/instaloader', d: 'Downloads public Instagram posts, captions, geotags and profile metadata.', install: 'pip3 install instaloader', run: () => [`instaloader --no-videos ${sq(D.user)}`] },
-  { n: 'ExifTool', cat: 'Images', need: [], repo: 'https://exiftool.org/', d: 'The reference metadata reader for every image, video and document format.', install: 'sudo apt install libimage-exiftool-perl   # or brew install exiftool', run: () => ['exiftool -a -G1 -s photo.jpg', 'exiftool -all= -o clean.jpg photo.jpg   # strip metadata'] },
-  { n: 'SpiderFoot', cat: 'Automation', need: ['name|user|email|phone|domain'], repo: 'https://github.com/smicallef/spiderfoot', d: 'Automated OSINT with 200+ modules; run the web UI or a passive CLI scan.', install: 'git clone https://github.com/smicallef/spiderfoot && cd spiderfoot && pip3 install -r requirements.txt', run: () => [`python3 sf.py -s ${sq(D.has.email ? D.email : D.has.user ? D.user : D.has.domain ? D.domain : D.has.phone ? D.ph.e164 : qt(D.name))} -u passive -o csv > spiderfoot.csv`, 'python3 sf.py -l 127.0.0.1:5001   # web UI'] },
-  { n: 'Recon-ng', cat: 'Automation', need: ['user'], repo: 'https://github.com/lanmaster53/recon-ng', d: 'Modular recon framework; the profiler module checks a handle across sites.', install: 'sudo apt install recon-ng && recon-ng   # then: marketplace install recon/profiles-profiles/profiler', run: () => [`recon-cli -m recon/profiles-profiles/profiler -o SOURCE=${sq(D.user)} -x`] },
+  { n: 'Sherlock', keys: 'None', googleKey: false, cat: 'Username', need: ['user'], repo: 'https://github.com/sherlock-project/sherlock', d: 'Hunts a username across 400+ social networks.', install: 'pipx install sherlock-project', run: () => [`sherlock ${sq(D.user)} --print-found`], bin: 'sherlock', script: () => ['sherlock', sq(D.user), '--print-found'] },
+  { n: 'Maigret', keys: 'None', googleKey: false, cat: 'Username', need: ['user'], repo: 'https://github.com/soxoj/maigret', d: 'Sherlock fork with 3,000+ sites, profile parsing and HTML/PDF reports.', install: 'pip3 install maigret', run: () => [`maigret ${sq(D.user)} --html`], bin: 'maigret', script: () => ['maigret', sq(D.user), '--html'] },
+  { n: 'Blackbird', keys: 'None', googleKey: false, cat: 'Username / email', need: ['user|email'], repo: 'https://github.com/p1ngul1n0/blackbird', d: 'Fast username and email search using WhatsMyName data.', install: 'git clone https://github.com/p1ngul1n0/blackbird && cd blackbird && pip install -r requirements.txt', run: () => [D.has.user && `python blackbird.py --username ${sq(D.user)}`, D.has.email && `python blackbird.py --email ${sq(D.email)}`].filter(Boolean) },
+  { n: 'socialscan', keys: 'None', googleKey: false, cat: 'Username / email', need: ['user|email'], repo: 'https://github.com/iojw/socialscan', d: 'Accurate availability checks on major platforms.', install: 'pip install socialscan', run: () => [`socialscan ${[D.has.user && sq(D.user), D.has.email && sq(D.email)].filter(Boolean).join(' ')}`], bin: 'socialscan', script: () => ['socialscan', ...[D.has.user && sq(D.user), D.has.email && sq(D.email)].filter(Boolean)] },
+  { n: 'Social Analyzer', keys: 'None', googleKey: false, cat: 'Username', need: ['user'], repo: 'https://github.com/qeeqbox/social-analyzer', d: 'Profile detection across 1,000+ sites with confidence scoring.', install: 'pip3 install social-analyzer', run: () => [`python3 -m social-analyzer --username ${sq(D.user)} --metadata`] },
+  { n: 'holehe', keys: 'None', googleKey: false, cat: 'Email', need: ['email'], repo: 'https://github.com/megadose/holehe', d: 'Checks which of 120+ sites an email is registered on via password-reset flows.', install: 'pip3 install holehe', run: () => [`holehe ${sq(D.email)} --only-used`], bin: 'holehe', script: () => ['holehe', sq(D.email), '--only-used'] },
+  { n: 'GHunt', keys: 'No API key. It signs in with your Google account (ghunt login stores session cookies).', googleKey: false, cat: 'Email', need: ['email'], repo: 'https://github.com/mxrch/GHunt', d: 'Google account investigation: Gaia ID, Maps reviews, public calendar, profile photo.', install: 'pipx install ghunt && ghunt login', run: () => [`ghunt email ${sq(D.email)}`], bin: 'ghunt', script: () => ['ghunt', 'email', sq(D.email)] },
+  { n: 'Mosint', keys: 'Optional keys for extra lookups (for example Hunter and EmailRep) in its config file.', googleKey: false, cat: 'Email', need: ['email'], repo: 'https://github.com/alpkeskin/mosint', d: 'Email OSINT: verification, social accounts, related domains, DNS.', install: 'go install -v github.com/alpkeskin/mosint/v3/cmd/mosint@latest', run: () => [`mosint ${sq(D.email)}`], bin: 'mosint', script: () => ['mosint', sq(D.email)] },
+  { n: 'GitFive', keys: 'No API key. It signs in with a GitHub account (gitfive login).', googleKey: false, cat: 'GitHub', need: ['user|email'], repo: 'https://github.com/mxrch/GitFive', d: 'Deep GitHub profiling: emails from commits, linked identities, SSH keys.', install: 'pipx install gitfive && gitfive login', run: () => [D.has.user && `gitfive user ${sq(D.user)}`, D.has.email && `gitfive email ${sq(D.email)}`].filter(Boolean) },
+  { n: 'PhoneInfoga', keys: 'Optional: your Google API key + search engine ID (GOOGLE_API_KEY, GOOGLECSE_CX env vars) enable its Google search scanner; NUMVERIFY_API_KEY adds carrier data.', googleKey: true, cat: 'Phone', need: ['phone'], repo: 'https://github.com/sundowndev/phoneinfoga', d: 'Phone number scanner: carrier, line type, footprint dorks, numverify.', install: 'bash <(curl -sSL https://raw.githubusercontent.com/sundowndev/phoneinfoga/master/support/scripts/install)', run: () => [`phoneinfoga scan -n ${sq(D.ph.e164 || D.ph.digits)}`], bin: 'phoneinfoga', script: () => ['phoneinfoga', 'scan', '-n', sq(D.ph.e164 || D.ph.digits)] },
+  { n: 'Ignorant', keys: 'None', googleKey: false, cat: 'Phone', need: ['phone'], repo: 'https://github.com/megadose/ignorant', d: 'Checks whether a phone number is registered on Instagram, Snapchat and Amazon.', install: 'pip3 install ignorant', run: () => [`ignorant ${D.ph.cc || '1'} ${D.ph.national}`], bin: 'ignorant', script: () => ['ignorant', sq(D.ph.cc || '1'), sq(D.ph.national)] },
+  { n: 'theHarvester', keys: 'Most good sources need keys (Hunter, SecurityTrails, Shodan, Censys, VirusTotal, GitHub token…) in its api-keys.yaml.', googleKey: false, cat: 'Domain', need: ['domain'], repo: 'https://github.com/laramies/theHarvester', d: 'Emails, names, subdomains and hosts for a domain from public sources.', install: 'sudo apt install theharvester   # Kali/Parrot; or clone the repo', run: () => [`theHarvester -d ${sq(D.domain)} -b all -l 500`], bin: 'theHarvester', script: () => ['theHarvester', '-d', sq(D.domain), '-b', 'all', '-l', '500'] },
+  { n: 'Metagoofil', keys: 'None. It scrapes Google, which often rate-limits it.', googleKey: false, cat: 'Domain', need: ['domain'], repo: 'https://github.com/opsdisk/metagoofil', d: 'Downloads public documents from a domain; exiftool then reveals authors and usernames.', install: 'git clone https://github.com/opsdisk/metagoofil && cd metagoofil && pip install -r requirements.txt', run: () => [`python metagoofil.py -d ${sq(D.domain)} -t pdf,docx,xlsx,pptx -l 50 -w -o docs`, 'exiftool -r -Author -Creator -LastModifiedBy docs'] },
+  { n: 'Instaloader', keys: 'None, but Instagram usually requires a login (--login USERNAME).', googleKey: false, cat: 'Instagram', need: ['user'], repo: 'https://github.com/instaloader/instaloader', d: 'Downloads public Instagram posts, captions, geotags and profile metadata.', install: 'pip3 install instaloader', run: () => [`instaloader --no-videos ${sq(D.user)}`] },
+  { n: 'ExifTool', keys: 'None', googleKey: false, cat: 'Images', need: [], repo: 'https://exiftool.org/', d: 'The reference metadata reader for every image, video and document format.', install: 'sudo apt install libimage-exiftool-perl   # or brew install exiftool', run: () => ['exiftool -a -G1 -s photo.jpg', 'exiftool -all= -o clean.jpg photo.jpg   # strip metadata'] },
+  { n: 'SpiderFoot', keys: 'Optional per module in the web UI Settings: your Google API key + search engine ID (Google search module), plus Shodan, Hunter, SecurityTrails, VirusTotal, HIBP and others.', googleKey: true, cat: 'Automation', need: ['name|user|email|phone|domain'], repo: 'https://github.com/smicallef/spiderfoot', d: 'Automated OSINT with 200+ modules; run the web UI or a passive CLI scan.', install: 'git clone https://github.com/smicallef/spiderfoot && cd spiderfoot && pip3 install -r requirements.txt', run: () => [`python3 sf.py -s ${sq(D.has.email ? D.email : D.has.user ? D.user : D.has.domain ? D.domain : D.has.phone ? D.ph.e164 : qt(D.name))} -u passive -o csv > spiderfoot.csv`, 'python3 sf.py -l 127.0.0.1:5001   # web UI'] },
+  { n: 'Recon-ng', keys: 'Per module, added with: keys add <name> <value>. Modules list the keys they need.', googleKey: false, cat: 'Automation', need: ['user'], repo: 'https://github.com/lanmaster53/recon-ng', d: 'Modular recon framework; the profiler module checks a handle across sites.', install: 'sudo apt install recon-ng && recon-ng   # then: marketplace install recon/profiles-profiles/profiler', run: () => [`recon-cli -m recon/profiles-profiles/profiler -o SOURCE=${sq(D.user)} -x`] },
 ];
 function renderCli() {
   const avail = CLI.filter(c => needOk(c.need));
@@ -1401,6 +1770,7 @@ function renderCli() {
     grid.append(h('div', { class: 'card', style: ok ? '' : 'opacity:.55' },
       h('h3', null, c.n, h('span', { class: 'chip static small', text: c.cat }), h('a', { href: c.repo, target: '_blank', rel: 'noopener noreferrer', class: 'small muted', style: 'margin-left:auto;font-weight:400', text: 'repo ↗' })),
       h('p', { class: 'sub', text: c.d }),
+      h('p', { class: 'small', style: 'margin:-4px 0 10px' }, h('span', { class: 'faint', text: 'API keys: ' }), c.keys, c.googleKey && D.has.gkey ? h('span', { class: 'chip static okc small', style: 'margin-left:6px', text: 'your Google key works here' }) : null),
       h('div', { class: 'small faint', text: 'Install' }), h('pre', { class: 'code', style: 'margin:3px 0 8px' }, c.install),
       h('div', { class: 'row small faint' }, 'Run', h('span', { style: 'flex:1' }), ok ? h('button', { class: 'btn sm ghost', text: 'Copy', onclick: () => copy(cmds, 'Command copied') }) : null),
       ok ? h('pre', { class: 'code', style: 'margin-top:3px' }, cmds) : h('p', { class: 'need', text: 'needs ' + needMissing(c.need).join(', ') })));
@@ -1412,7 +1782,10 @@ function downloadScript() {
   const tools = CLI.filter(c => c.bin && needOk(c.need));
   const tag = slug(D.name || D.user || D.domain || 'subject') || 'subject';
   const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  const lines = ['#!/usr/bin/env bash', `# PeopleScope case script, generated ${new Date().toISOString()}`, '# Review before running. Each tool is skipped if it is not installed; output is saved per tool.', 'set -u', `OUT=${sq(`case_${tag}_${stamp}`)}`, 'mkdir -p "$OUT"',
+  const lines = ['#!/usr/bin/env bash', `# PeopleScope case script, generated ${new Date().toISOString()}`, '# Review before running. Each tool is skipped if it is not installed; output is saved per tool.',
+    '# Optional API keys (set in your shell, never stored in this file):',
+    '#   export GOOGLE_API_KEY=...  GOOGLECSE_CX=...   # PhoneInfoga Google search scanner',
+    '#   export NUMVERIFY_API_KEY=...                  # PhoneInfoga carrier lookup', 'set -u', `OUT=${sq(`case_${tag}_${stamp}`)}`, 'mkdir -p "$OUT"',
     'run() { local name="$1"; shift; if command -v "$1" >/dev/null 2>&1; then echo "[+] $name"; "$@" 2>&1 | tee "$OUT/$name.txt"; else echo "[-] $name: $1 not installed, skipping"; fi; }', ''];
   for (const c of tools) lines.push(`run ${slug(c.n)} ${c.script().join(' ')}`);
   lines.push('', 'echo "Done. Results in $OUT/"');
@@ -1479,6 +1852,88 @@ function importCase() {
 /* ============================================================
    Privacy intro
    ============================================================ */
+/* ============================================================
+   API keys tab
+   ============================================================ */
+const KEYTEST = { rows: null };
+const GOOGLE_APIS = [
+  ['Custom Search JSON API', 'Google results inside the Search tab, and "Google web" rows in the email and name live checks. Also needs a Programmable Search Engine ID.', '100 queries/day free, then $5 per 1,000. Google has closed this API to new customers, so it only works if your project already has access.'],
+  ['YouTube Data API v3', 'YouTube @handle check (usernames) and channel search (names).', '10,000 units/day free. A handle check costs 1 unit; a channel search costs 100.'],
+  ['Knowledge Graph Search API', 'Notable-person matches for a name.', 'Free, with a daily quota.'],
+  ['Maps Embed API', 'Interactive map of the subject\'s address (People & records tab).', 'Free. The Cloud project needs billing enabled.'],
+  ['Street View Static API', 'Street-level photo of the address.', 'Billed per image after a monthly free allowance. Loads only when you click.'],
+  ['Cloud Vision API', 'Reverse image search: pages and copies of a photo (Images tab).', 'First 1,000 images a month free; billing account required.'],
+];
+async function testKeys() {
+  const tests = [
+    ['YouTube Data API v3', 'gkey', () => gapi('https://www.googleapis.com/youtube/v3/channels?part=id&forHandle=%40YouTube'), () => 'working'],
+    ['Knowledge Graph Search API', 'gkey', () => gapi('https://kgsearch.googleapis.com/v1/entities:search?query=test&limit=1'), () => 'working'],
+    ['Custom Search JSON API', 'cse', () => cseSearch('test'), () => 'working (used 1 query)'],
+    ['GitHub token', 'github', () => getJSON('https://api.github.com/rate_limit', { headers: { Authorization: 'Bearer ' + KEYS.github.trim() } }), r => { const c = r.body && r.body.resources && r.body.resources.core; return c ? `working: ${c.remaining}/${c.limit} requests left this hour` : 'working'; }],
+  ];
+  KEYTEST.rows = tests.map(([n]) => ({ n, state: 'pending' })); render();
+  await Promise.all(tests.map(async ([n, need, fn, okText], i) => {
+    let row;
+    const have = need === 'github' ? !!KEYS.github.trim() : D.has[need];
+    if (!have) row = { n, state: 'none', label: 'no key', note: need === 'cse' ? 'Needs the Google key and a search engine ID.' : 'Not set.' };
+    else {
+      try {
+        const r = await fn();
+        if (r.ok) row = { n, state: 'found', label: 'ok', note: okText(r) };
+        else row = { n, ...(need === 'github' ? ERR(r.status === 401 ? 'GitHub rejected the token.' : `GitHub returned HTTP ${r.status}.`) : gErr(r)), label: 'failed' };
+      } catch (e) { row = { n, ...ERR('Request failed: network blocked, or the API refused browser requests.'), label: 'failed' }; }
+    }
+    KEYTEST.rows[i] = row; if (CUR === 'keys') render();
+  }));
+}
+function renderKeys() {
+  const onKey = () => { saveKeys(); D = derive(RAW); updateTabCounts(); };
+  const field = (k, label, ph, help) => {
+    const inp = h('input', { class: 'inp', type: 'password', value: KEYS[k], placeholder: ph, autocomplete: 'off', spellcheck: 'false', 'aria-label': label });
+    inp.oninput = () => { KEYS[k] = inp.value.trim(); onKey(); };
+    const show = h('button', { class: 'btn sm ghost', type: 'button', text: 'Show', onclick: () => { inp.type = inp.type === 'password' ? 'text' : 'password'; show.textContent = inp.type === 'password' ? 'Show' : 'Hide'; } });
+    return h('div', { class: 'fld', style: 'margin-bottom:12px' }, h('label', { text: label }), h('div', { class: 'keyrow' }, inp, show), help ? h('span', { class: 'small faint' }, help) : null);
+  };
+  const ext = (href, text) => h('a', { href, target: '_blank', rel: 'noopener noreferrer', text });
+  const rem = h('input', { type: 'checkbox', checked: KEYS.remember });
+  rem.onchange = () => { KEYS.remember = rem.checked; saveKeys(); toast(rem.checked ? 'Keys will be remembered in this browser' : 'Keys will be forgotten when this tab closes'); };
+  const table = (head, rows) => h('div', { style: 'overflow-x:auto' }, h('table', { class: 'pins' }, h('thead', null, h('tr', null, head.map(t => h('th', { text: t })))), h('tbody', null, rows.map(r => h('tr', null, r.map((c, i) => h('td', { style: i === 0 ? 'font-weight:600;white-space:nowrap' : '' }, c)))))));
+  const out = [h('div', { class: 'vhead' }, h('div', { class: 'grow' }, h('h2', { text: 'API keys' }),
+    h('p', { text: 'Optional keys that unlock more checks. Your Google API key powers inline Google results, YouTube lookups, Knowledge Graph matches, address maps and Street View, and Google Vision reverse image search. Keys stay in this browser and go only to the provider\'s API.' })))];
+  const keysCard = h('div', { class: 'card' }, h('h3', { text: 'Your keys' }), h('p', { class: 'sub', text: 'Changes save as you type.' }),
+    field('google', 'Google API key', 'AIza…', ['From ', ext('https://console.cloud.google.com/apis/credentials', 'Google Cloud console › Credentials'), '. Enable the APIs listed below on the same project.']),
+    field('cx', 'Programmable Search Engine ID (cx)', 'e.g. 0123456789abcdef0', ['Only for Google results. Create an engine at ', ext('https://programmablesearchengine.google.com/controlpanel/all', 'programmablesearchengine.google.com'), ' and copy its Search engine ID.']),
+    field('github', 'GitHub token (optional)', 'github_pat_…', ['A ', ext('https://github.com/settings/personal-access-tokens/new', 'fine-grained token'), ' with no repository access and no permissions raises the GitHub check from 60 to 5,000 lookups an hour.']),
+    h('label', { class: 'row small', style: 'gap:8px;margin:4px 0 12px' }, rem, 'Remember keys in this browser (otherwise they\'re cleared when this tab closes)'),
+    h('div', { class: 'row' },
+      h('button', { class: 'btn primary', text: 'Test keys', onclick: testKeys }),
+      h('button', { class: 'btn ghost', text: 'Remove all keys', onclick: () => { if (confirm('Remove all saved API keys from this browser?')) { KEYS.google = KEYS.cx = KEYS.github = ''; onKey(); KEYTEST.rows = null; render(); } } })));
+  if (KEYTEST.rows) {
+    const box = h('div', { class: 'live', style: 'margin:14px 0 0' });
+    for (const r of KEYTEST.rows) box.append(liveRow(r, 'Key test'));
+    box.append(h('div', { class: 'lempty small', text: 'Maps Embed, Street View Static and Cloud Vision are checked when you first use them (they have no free test call).' }));
+    keysCard.append(box);
+  }
+  out.push(keysCard);
+  out.push(h('div', { class: 'card' }, h('h3', { text: 'What your Google key unlocks' }), h('p', { class: 'sub' }, 'Enable only the ones you want in ', ext('https://console.cloud.google.com/apis/library', 'Cloud console › API Library'), '. Prices are Google\'s published rates at the time of writing; check the console before relying on them.'),
+    table(['API to enable', 'What it does here', 'Free tier / cost'], GOOGLE_APIS)));
+  out.push(h('div', { class: 'card' }, h('h3', { text: 'Keep the key safe' }), h('dl', { class: 'kv', style: 'margin-top:8px' },
+    h('dt', { text: '1' }), h('dd', { text: 'Use a dedicated key. Under API restrictions, allow only the APIs above.' }),
+    h('dt', { text: '2' }), h('dd', { text: 'Set quota caps per API (APIs & Services › the API › Quotas) so a leaked key can\'t run up a bill.' }),
+    h('dt', { text: '3' }), h('dd', { text: 'If you host this page on a website, add an HTTP-referrer restriction for that site. Opened straight from disk, the page sends no referrer, so a referrer-restricted key won\'t work there.' }),
+    h('dt', { text: '4' }), h('dd', { text: 'Keys are never written into case exports or downloaded scripts. A remembered key can be read by anyone using this browser profile.' }))));
+  out.push(h('div', { class: 'card' }, h('h3', { text: 'Keys the command-line tools use' }), h('p', { class: 'sub', text: 'Configured on your own machine, not here. Your Google key and search engine ID also work in PhoneInfoga and SpiderFoot.' }),
+    table(['Tool', 'Keys'], CLI.map(c => [c.n, c.keys]))));
+  out.push(h('div', { class: 'card' }, h('h3', { text: 'Other keys worth getting' }), table(['Service', 'Why', 'Cost'], [
+    ['Hunter.io', 'Email finder and verifier. Used by theHarvester, SpiderFoot and Mosint.', 'Free tier (small monthly quota)'],
+    ['Have I Been Pwned API', 'Breach lookups for scripted tools like SpiderFoot. It blocks browser calls, so it can\'t be used in this page.', 'Paid subscription'],
+    ['Shodan', 'Exposed devices and services for domains/IPs. Used by theHarvester, SpiderFoot and Recon-ng.', 'Free account with limits; paid membership for filters'],
+    ['SecurityTrails', 'Historical DNS and WHOIS for domains.', 'Free tier'],
+    ['VirusTotal', 'Domain reputation and passive DNS.', 'Free tier'],
+    ['Numverify', 'Phone carrier and line type for PhoneInfoga.', 'Free tier'],
+  ])));
+  return out;
+}
 function renderPrivacyIntro() {
   return h('div', { class: 'card' }, h('h3', { text: 'Self-audit checklist' }), h('dl', { class: 'kv', style: 'margin-top:8px' },
     h('dt', { text: '1' }), h('dd', { text: 'Enter your own name, handles, emails and phone numbers as the subject, then work through each tab.' }),
