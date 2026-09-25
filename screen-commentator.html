@@ -410,18 +410,13 @@
   const frameSource = () => latestFrame || video;
 
   async function startShare() {
-    // Stop Chrome from jumping to the shared tab/window — keep focus on the commentator.
-    const controller = 'CaptureController' in window ? new CaptureController() : null;
     try {
       stream = await navigator.mediaDevices.getDisplayMedia({
-        ...(controller && { controller }),
         video: { frameRate: 10, displaySurface: 'browser' },  // picker opens on the tab list
         audio: false,
         selfBrowserSurface: 'exclude',   // don't offer this commentator tab itself
         surfaceSwitching: 'include',     // Chrome's "Share this tab instead" button
       });
-      // must run right after the picker closes; throws for whole-screen shares, which never switch focus
-      try { controller?.setFocusBehavior('no-focus-change'); } catch {}
     } catch (err) {
       setStatus('Screen share cancelled');
       return;
