@@ -130,7 +130,7 @@
         <option value="queue">Queue it (keeps only the latest)</option>
         <option value="interrupt">Interrupt and react to the new one</option>
       </select>
-      <div class="hint">Hotkeys only work while this tab is focused (browsers can't read keys from other apps).</div>
+      <div class="hint">Hotkeys only work while this tab is focused (browsers can't read keys from other windows or apps). Screen-change, settle and timer events keep working while you're in another window.</div>
     </section>
 
     <section>
@@ -366,10 +366,57 @@
   const diffCtx = diffCanvas.getContext('2d', { willReadFrequently: true });
   let prevPixels = null;
   let lastMotionAt = 0;
+  let latestFrame = null;       // newest VideoFrame straight from the capture track
+
+  // Timers in a worker keep firing when this tab is in the background
+  // (e.g. while you watch the shared tab in another window). Page timers get throttled there.
+  const timerWorker = new Worker(URL.createObjectURL(new Blob([`
+    const t = {};
+    onmessage = ({ data: d }) => {
+      if (d.cmd === 'set') t[d.id] = setInterval(() => postMessage(d.id), d.ms);
+      else { clearInterval(t[d.id]); delete t[d.id]; }
+    };`], { type: 'text/javascript' })));
+  const bgCallbacks = {};
+  let bgId = 0;
+  timerWorker.onmessage = ({ data: id }) => bgCallbacks[id]?.();
+  function bgInterval(fn, ms) {
+    const id = ++bgId;
+    bgCallbacks[id] = fn;
+    timerWorker.postMessage({ cmd: 'set', id, ms });
+    return id;
+  }
+  function clearBgInterval(id) {
+    delete bgCallbacks[id];
+    timerWorker.postMessage({ cmd: 'clear', id });
+  }
+
+  // Read frames directly from the track so capture doesn't depend on this tab being visible.
+  async function pumpFrames(track) {
+    if (!('MediaStreamTrackProcessor' in window)) return;
+    try {
+      const reader = new MediaStreamTrackProcessor({ track }).readable.getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (latestFrame) latestFrame.close();
+        latestFrame = value;
+      }
+    } catch {}
+    if (latestFrame) { latestFrame.close(); latestFrame = null; }
+  }
+  const frameSize = () => latestFrame
+    ? [latestFrame.displayWidth, latestFrame.displayHeight]
+    : [video.videoWidth, video.videoHeight];
+  const frameSource = () => latestFrame || video;
 
   async function startShare() {
     try {
-      stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 10 }, audio: false });
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: 10, displaySurface: 'browser' },  // picker opens on the tab list
+        audio: false,
+        selfBrowserSurface: 'exclude',   // don't offer this commentator tab itself
+        surfaceSwitching: 'include',     // Chrome's "Share this tab instead" button
+      });
     } catch (err) {
       setStatus('Screen share cancelled');
       return;
@@ -381,13 +428,14 @@
     $('shareBtn').className = 'danger';
     $('nowBtn').disabled = false;
     stream.getVideoTracks()[0].addEventListener('ended', stopShare);
+    pumpFrames(stream.getVideoTracks()[0]);
     prevPixels = null;
     setStatus('Live');
     syncIntervals();
     // wait until the video is producing real frames before firing "start" events
     const fireStart = (tries = 0) => {
       if (!stream) return;
-      if (!video.videoWidth && tries < 25) return setTimeout(() => fireStart(tries + 1), 200);
+      if (!frameSize()[0] && tries < 25) return setTimeout(() => fireStart(tries + 1), 200);
       events.filter(e => e.enabled && e.type === 'start').forEach(e => trigger(e));
     };
     setTimeout(fireStart, 500);
@@ -406,20 +454,20 @@
   }
 
   function grabFrame() {
-    const w = video.videoWidth, h = video.videoHeight;
+    const [w, h] = frameSize();
     if (!w || !h) return null;
     const scale = Math.min(1, (+$('maxWidth').value || 1280) / w);
     frameCanvas.width = Math.round(w * scale);
     frameCanvas.height = Math.round(h * scale);
-    frameCanvas.getContext('2d').drawImage(video, 0, 0, frameCanvas.width, frameCanvas.height);
+    frameCanvas.getContext('2d').drawImage(frameSource(), 0, 0, frameCanvas.width, frameCanvas.height);
     const q = Math.min(1, Math.max(0.3, +$('quality').value || 0.7));
     return frameCanvas.toDataURL('image/jpeg', q);
   }
 
   // motion detection loop
-  setInterval(() => {
-    if (!stream || !video.videoWidth) return;
-    diffCtx.drawImage(video, 0, 0, diffCanvas.width, diffCanvas.height);
+  bgInterval(() => {
+    if (!stream || !frameSize()[0]) return;
+    diffCtx.drawImage(frameSource(), 0, 0, diffCanvas.width, diffCanvas.height);
     const px = diffCtx.getImageData(0, 0, diffCanvas.width, diffCanvas.height).data;
     const gray = new Uint8Array(px.length / 4);
     for (let i = 0; i < gray.length; i++) gray[i] = (px[i * 4] * 3 + px[i * 4 + 1] * 6 + px[i * 4 + 2]) / 10;
@@ -446,11 +494,11 @@
   }, 400);
 
   function syncIntervals() {
-    for (const id in timers) { clearInterval(timers[id]); delete timers[id]; }
+    for (const id in timers) { clearBgInterval(timers[id]); delete timers[id]; }
     if (!stream) return;
     for (const ev of events) {
       if (ev.enabled && ev.type === 'interval') {
-        timers[ev.id] = setInterval(() => trigger(ev), Math.max(3, +ev.value || 30) * 1000);
+        timers[ev.id] = bgInterval(() => trigger(ev), Math.max(3, +ev.value || 30) * 1000);
       }
     }
   }
