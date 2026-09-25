@@ -213,6 +213,17 @@ table.pins .x:hover{color:var(--bad)}
 .gres a.gt{font-weight:600;text-decoration:none;color:var(--text)}
 .gres a.gt:hover{color:var(--accent)}
 .gres .gu{font-size:11px;font-family:var(--mono);color:var(--ok);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.clue{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:6px;background:var(--accent-soft);border-radius:var(--r) var(--r) 0 0}
+.clue>label[for]{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+.cluerow{display:flex;gap:6px}
+.cluerow input{flex:1;height:38px;border-radius:8px;border:1px solid var(--line2);background:var(--panel);padding:0 10px;min-width:0;outline:none}
+.cluerow input:focus{border-color:var(--accent)}
+.cluerow .btn{height:38px}
+.cluechk{display:flex;gap:6px;align-items:center}
+#clueHint b{color:var(--accent);font-weight:600}
+.fld[data-auto] input{border-style:dashed;border-color:var(--accent)}
+.fld label[data-auto]::after{content:" · from " attr(data-auto);color:var(--accent)}
+.warnrow{padding:8px 14px;font-size:12.5px;color:var(--warn);background:var(--warn-soft);border-top:1px solid var(--line)}
 .keyrow{display:flex;gap:8px;align-items:center}
 .keyrow .inp{flex:1}
 .live,.card{scroll-margin-top:120px}
@@ -266,6 +277,12 @@ table.pins .x:hover{color:var(--bad)}
 
 <div class="shell">
   <aside class="subject" aria-label="Subject">
+    <div class="clue">
+      <label for="clue">Start from one clue</label>
+      <div class="cluerow"><input id="clue" placeholder="Email, @username, phone, full name, profile link or website" autocomplete="off" spellcheck="false" autocapitalize="off"><button class="btn primary" id="clueGo" type="button">Find</button></div>
+      <div class="small faint" id="clueHint">Detects what it is, runs every check, then follows what it finds.</div>
+      <label class="small muted cluechk"><input type="checkbox" id="clueAuto" checked> Auto-pivot: fill empty fields from findings and keep checking</label>
+    </div>
     <header><h2>Subject</h2><span class="spacer"></span><span class="small faint" id="fillCount"></span></header>
     <form class="form" id="subjectForm" autocomplete="off" onsubmit="return false">
       <div class="fld s3"><label for="f_first">First name</label><input id="f_first" data-k="first" placeholder="Jane"></div>
@@ -346,7 +363,12 @@ function h(tag, props, ...kids) {
 const safeUrl = u => { try { const x = new URL(String(u)); return /^https?:$/.test(x.protocol) ? x.href : null; } catch (e) { return null; } };
 const hostOf = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return ''; } };
 const stripHtml = s => new DOMParser().parseFromString(String(s ?? ''), 'text/html').body.textContent.trim();
-const slug = (s, sep = '-') => String(s).toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, sep).split(sep).filter(Boolean).join(sep);
+// Latin text is transliterated (José → jose); non-Latin names (张伟, Иван) are kept and URL-encoded instead of becoming empty.
+const slug = (s, sep = '-') => {
+  const t = String(s).toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '');
+  const ascii = t.replace(/[^a-z0-9]+/g, sep).split(sep).filter(Boolean).join(sep);
+  return /[^\x00-\x7f]/.test(t.replace(/[\s'.-]/g, '')) ? t.trim().split(/[\s'.-]+/).filter(Boolean).map(enc).join(sep) : ascii;
+};
 const dash = s => String(s).trim().replace(/\s+/g, '-');
 const qt = s => `"${s}"`;
 const sq = s => "'" + String(s).replace(/'/g, "'\\''") + "'";
@@ -1048,7 +1070,7 @@ function render() {
   view.textContent = '';
   if (f) { view.append(renderFilter(f)); return; }
   const m = MODULES.find(x => x.id === CUR);
-  if (m.custom) { view.append(...[].concat(m.custom())); return; }
+  if (m.custom) { view.append(...[].concat(m.custom()).filter(Boolean)); return; }
   const s = moduleStats(m);
   view.append(h('div', { class: 'vhead' }, h('div', { class: 'grow' }, h('h2', { text: m.title }), h('p', { text: m.blurb })),
     h('div', { class: 'stat' }, h('b', { text: `${s.a}` }), h('span', { text: `of ${s.t} tools ready` }))));
@@ -1071,9 +1093,19 @@ function renderFilter(f) {
 /* ============================================================
    Subject form wiring
    ============================================================ */
+// Fields filled automatically by the one-clue pivot, with the source that supplied them. Cleared when you edit the field.
+let AUTO = store.get('ps.auto', {});
+const saveAuto = () => store.set('ps.auto', AUTO);
+function markAuto() {
+  for (const el of $$('#subjectForm [data-k]')) {
+    const f = el.closest('.fld'), lb = f.querySelector('label'), src = AUTO[el.dataset.k];
+    if (src && String(RAW[el.dataset.k] || '').trim()) { f.dataset.auto = src; lb.dataset.auto = src; lb.title = `Filled automatically from ${src}. Edit the field to take it over.`; }
+    else { delete f.dataset.auto; delete lb.dataset.auto; lb.removeAttribute('title'); }
+  }
+}
 function fillForm() {
   for (const el of $$('#subjectForm [data-k]')) { el.value = RAW[el.dataset.k] ?? (el.tagName === 'SELECT' ? 'US' : ''); el.classList.toggle('set', !!String(el.value).trim() && el.tagName !== 'SELECT'); }
-  updateFillCount();
+  markAuto(); updateFillCount();
 }
 function updateFillCount() {
   const n = FIELD_KEYS.filter(k => k !== 'country' && String(RAW[k] || '').trim()).length;
@@ -1086,13 +1118,14 @@ function onSubjectChange() {
   updateFillCount(); updateTabCounts();
   clearTimeout(rT); rT = setTimeout(() => render(), 120);
 }
-function setField(k, v) { RAW[k] = v; const el = $(`#subjectForm [data-k="${k}"]`); if (el) { el.value = v; el.classList.toggle('set', !!v); } onSubjectChange(); }
+function setField(k, v) { RAW[k] = v; delete AUTO[k]; saveAuto(); const el = $(`#subjectForm [data-k="${k}"]`); if (el) { el.value = v; el.classList.toggle('set', !!v); } markAuto(); onSubjectChange(); }
 $('#subjectForm').addEventListener('input', e => {
   const k = e.target.dataset.k; if (!k) return;
   RAW[k] = e.target.value; e.target.classList.toggle('set', !!e.target.value.trim() && e.target.tagName !== 'SELECT');
+  if (AUTO[k]) { delete AUTO[k]; saveAuto(); markAuto(); }
   onSubjectChange();
 });
-$('#clearSubj').onclick = () => { if (!FIELD_KEYS.some(k => k !== 'country' && RAW[k]) || confirm('Clear all subject fields?')) { RAW = { country: RAW.country || 'US' }; fillForm(); onSubjectChange(); } };
+$('#clearSubj').onclick = () => { if (!FIELD_KEYS.some(k => k !== 'country' && RAW[k]) || confirm('Clear all subject fields?')) { RAW = { country: RAW.country || 'US' }; AUTO = {}; saveAuto(); resetPivot(); fillForm(); onSubjectChange(); } };
 $('#runAll').onclick = () => { go('live'); runAllLive(); };
 
 const EMAIL_HASH = { email: '', sha: '' };
@@ -1150,29 +1183,29 @@ const LIVE_DEFS = {
     title: 'Live username check', need: ['user'], key: () => D.user,
     sub: 'Queries public APIs that allow browser requests (GitHub, GitLab, Keybase, Hacker News, Chess.com, Lichess, Mastodon, Bluesky, Wikipedia, Reddit, DEV, npm, Codeberg, plus YouTube with a Google key). "Not found" on one platform says nothing about others.',
     checks: [
-      { n: 'GitHub', hint: () => KEYS.github.trim() ? 'using your token' : '60 checks/hour without a token', headers: () => KEYS.github.trim() ? { Authorization: 'Bearer ' + KEYS.github.trim() } : {}, link: u => `https://github.com/${u}`, url: u => `https://api.github.com/users/${enc(u)}`, parse: r => r.status === 404 ? NONE() : r.ok ? FOUND([['Name', r.body.name], ['Bio', r.body.bio], ['Location', r.body.location], ['Company', r.body.company], ['Website', r.body.blog], ['Public email', r.body.email], ['X / Twitter', r.body.twitter_username], ['Joined', fmtDate(r.body.created_at)], ['Stats', `${r.body.public_repos} repos · ${r.body.followers} followers`]], { avatar: r.body.avatar_url }) : ERR(r.status === 401 ? 'GitHub rejected your token (API keys tab).' : r.status === 403 || r.status === 429 ? 'GitHub rate limit hit. Add a GitHub token in the API keys tab for 5,000/hour.' : null) },
-      { n: 'GitLab', link: u => `https://gitlab.com/${u}`, url: u => `https://gitlab.com/api/v4/users?username=${enc(u)}`, parse: r => !r.ok ? ERR() : Array.isArray(r.body) && r.body.length ? FOUND([['Name', r.body[0].name], ['State', r.body[0].state]], { avatar: r.body[0].avatar_url }) : NONE() },
-      { n: 'Keybase', hint: 'may block browsers', link: u => `https://keybase.io/${u}`, url: u => `https://keybase.io/_/api/1.0/user/lookup.json?usernames=${enc(u)}&fields=basics,profile,proofs_summary`, parse: r => {
+      { n: 'GitHub', leads: b => [lead('name', b.name), lead('loc', b.location), lead('employer', String(b.company || '').replace(/^@/, '')), ...urlLeads(b.blog), lead('email', b.email), b.twitter_username && socialLead('X / Twitter', b.twitter_username), lead('img', b.avatar_url), ...textLeads(b.bio)], hint: () => KEYS.github.trim() ? 'using your token' : '60 checks/hour without a token', headers: () => KEYS.github.trim() ? { Authorization: 'Bearer ' + KEYS.github.trim() } : {}, link: u => `https://github.com/${u}`, url: u => `https://api.github.com/users/${enc(u)}`, parse: r => r.status === 404 ? NONE() : r.ok ? FOUND([['Name', r.body.name], ['Bio', r.body.bio], ['Location', r.body.location], ['Company', r.body.company], ['Website', r.body.blog], ['Public email', r.body.email], ['X / Twitter', r.body.twitter_username], ['Joined', fmtDate(r.body.created_at)], ['Stats', `${r.body.public_repos} repos · ${r.body.followers} followers`]], { avatar: r.body.avatar_url }) : ERR(r.status === 401 ? 'GitHub rejected your token (API keys tab).' : r.status === 403 || r.status === 429 ? 'GitHub rate limit hit. Add a GitHub token in the API keys tab for 5,000/hour.' : null) },
+      { n: 'GitLab', leads: b => [lead('name', b[0] && b[0].name)], link: u => `https://gitlab.com/${u}`, url: u => `https://gitlab.com/api/v4/users?username=${enc(u)}`, parse: r => !r.ok ? ERR() : Array.isArray(r.body) && r.body.length ? FOUND([['Name', r.body[0].name], ['State', r.body[0].state]], { avatar: r.body[0].avatar_url }) : NONE() },
+      { n: 'Keybase', leads: b => { const t = b.them && b.them[0]; if (!t) return []; const pr = (t.proofs_summary && t.proofs_summary.all) || []; return [lead('name', t.profile && t.profile.full_name), lead('loc', t.profile && t.profile.location), ...textLeads(t.profile && t.profile.bio), ...pr.flatMap(p => /^(dns|generic_web_site)$/.test(p.proof_type) ? urlLeads(p.nametag) : [socialLead(PROOF_PLATFORM[p.proof_type] || p.proof_type, p.nametag, p.service_url)])]; }, hint: 'may block browsers', link: u => `https://keybase.io/${u}`, url: u => `https://keybase.io/_/api/1.0/user/lookup.json?usernames=${enc(u)}&fields=basics,profile,proofs_summary`, parse: r => {
         const t = r.body && r.body.them && r.body.them[0];
         if (!r.ok && r.status !== 404) return ERR(); if (!t) return NONE();
         const proofs = ((t.proofs_summary && t.proofs_summary.all) || []).map(p => `${p.proof_type}: ${p.nametag}`);
         return FOUND([['Name', t.profile && t.profile.full_name], ['Location', t.profile && t.profile.location], ['Bio', t.profile && t.profile.bio], ['Linked proofs', proofs.join(' · ')]]);
       } },
-      { n: 'Hacker News', link: u => `https://news.ycombinator.com/user?id=${u}`, url: u => `https://hacker-news.firebaseio.com/v0/user/${enc(u)}.json`, parse: r => !r.ok ? ERR() : !r.body ? NONE('HN usernames are case-sensitive.') : FOUND([['Karma', r.body.karma], ['Joined', fmtDate(r.body.created)], ['About', stripHtml(r.body.about)]]) },
-      { n: 'Chess.com', link: u => `https://www.chess.com/member/${u}`, url: u => `https://api.chess.com/pub/player/${enc(u.toLowerCase())}`, parse: r => r.status === 404 ? NONE() : r.ok ? FOUND([['Name', r.body.name], ['Location', r.body.location], ['Country', String(r.body.country || '').split('/').pop()], ['Joined', fmtDate(r.body.joined)], ['Last online', fmtDate(r.body.last_online)]], { avatar: r.body.avatar }) : ERR() },
-      { n: 'Lichess', link: u => `https://lichess.org/@/${u}`, url: u => `https://lichess.org/api/user/${enc(u)}`, parse: r => r.status === 404 ? NONE() : r.ok ? FOUND([['Real name', r.body.profile && (r.body.profile.realName || [r.body.profile.firstName, r.body.profile.lastName].filter(Boolean).join(' '))], ['Location', r.body.profile && r.body.profile.location], ['Flag', r.body.profile && (r.body.profile.flag || r.body.profile.country)], ['Bio', r.body.profile && r.body.profile.bio], ['Links', r.body.profile && r.body.profile.links], ['Joined', fmtDate(r.body.createdAt)], ['Status', r.body.disabled ? 'closed' : r.body.tosViolation ? 'ToS violation' : null]]) : ERR() },
-      { n: 'Mastodon (.social)', link: u => `https://mastodon.social/@${u}`, url: u => `https://mastodon.social/api/v1/accounts/lookup?acct=${enc(u)}`, parse: r => r.status === 404 ? NONE('Only checks mastodon.social; other servers may host this handle.') : r.ok ? FOUND([['Display name', r.body.display_name], ['Bio', stripHtml(r.body.note)], ['Joined', fmtDate(r.body.created_at)], ['Followers', r.body.followers_count], ...((r.body.fields || []).map(f => [f.name, stripHtml(f.value)]))], { avatar: r.body.avatar_static }) : ERR() },
-      { n: 'Bluesky', link: u => `https://bsky.app/profile/${u.includes('.') ? u : u + '.bsky.social'}`, url: u => `https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile?actor=${enc(u.includes('.') ? u : u + '.bsky.social')}`, parse: r => r.status === 400 ? NONE('Checked the .bsky.social handle; custom-domain handles differ.') : r.ok ? FOUND([['Display name', r.body.displayName], ['Bio', r.body.description], ['Followers', r.body.followersCount], ['Posts', r.body.postsCount], ['Joined', fmtDate(r.body.createdAt)]], { avatar: r.body.avatar }) : ERR() },
+      { n: 'Hacker News', leads: b => textLeads(stripHtml(b && b.about)), link: u => `https://news.ycombinator.com/user?id=${u}`, url: u => `https://hacker-news.firebaseio.com/v0/user/${enc(u)}.json`, parse: r => !r.ok ? ERR() : !r.body ? NONE('HN usernames are case-sensitive.') : FOUND([['Karma', r.body.karma], ['Joined', fmtDate(r.body.created)], ['About', stripHtml(r.body.about)]]) },
+      { n: 'Chess.com', leads: b => [lead('name', b.name), lead('loc', b.location)], link: u => `https://www.chess.com/member/${u}`, url: u => `https://api.chess.com/pub/player/${enc(u.toLowerCase())}`, parse: r => r.status === 404 ? NONE() : r.ok ? FOUND([['Name', r.body.name], ['Location', r.body.location], ['Country', String(r.body.country || '').split('/').pop()], ['Joined', fmtDate(r.body.joined)], ['Last online', fmtDate(r.body.last_online)]], { avatar: r.body.avatar }) : ERR() },
+      { n: 'Lichess', leads: b => { const p = b.profile || {}; return [lead('name', p.realName || [p.firstName, p.lastName].filter(Boolean).join(' ')), lead('loc', p.location), ...textLeads(p.links), ...textLeads(p.bio)]; }, link: u => `https://lichess.org/@/${u}`, url: u => `https://lichess.org/api/user/${enc(u)}`, parse: r => r.status === 404 ? NONE() : r.ok ? FOUND([['Real name', r.body.profile && (r.body.profile.realName || [r.body.profile.firstName, r.body.profile.lastName].filter(Boolean).join(' '))], ['Location', r.body.profile && r.body.profile.location], ['Flag', r.body.profile && (r.body.profile.flag || r.body.profile.country)], ['Bio', r.body.profile && r.body.profile.bio], ['Links', r.body.profile && r.body.profile.links], ['Joined', fmtDate(r.body.createdAt)], ['Status', r.body.disabled ? 'closed' : r.body.tosViolation ? 'ToS violation' : null]]) : ERR() },
+      { n: 'Mastodon (.social)', leads: b => [lead('name', b.display_name), ...textLeads(stripHtml(b.note)), ...(b.fields || []).flatMap(f => { const v = stripHtml(f.value); return /^https?:\/\//.test(v) || isDomainLike(v) ? urlLeads(v) : textLeads(v); })], link: u => `https://mastodon.social/@${u}`, url: u => `https://mastodon.social/api/v1/accounts/lookup?acct=${enc(u)}`, parse: r => r.status === 404 ? NONE('Only checks mastodon.social; other servers may host this handle.') : r.ok ? FOUND([['Display name', r.body.display_name], ['Bio', stripHtml(r.body.note)], ['Joined', fmtDate(r.body.created_at)], ['Followers', r.body.followers_count], ...((r.body.fields || []).map(f => [f.name, stripHtml(f.value)]))], { avatar: r.body.avatar_static }) : ERR() },
+      { n: 'Bluesky', leads: b => [lead('name', b.displayName), ...textLeads(b.description)], link: u => `https://bsky.app/profile/${u.includes('.') ? u : u + '.bsky.social'}`, url: u => `https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile?actor=${enc(u.includes('.') ? u : u + '.bsky.social')}`, parse: r => r.status === 400 ? NONE('Checked the .bsky.social handle; custom-domain handles differ.') : r.ok ? FOUND([['Display name', r.body.displayName], ['Bio', r.body.description], ['Followers', r.body.followersCount], ['Posts', r.body.postsCount], ['Joined', fmtDate(r.body.createdAt)]], { avatar: r.body.avatar }) : ERR() },
       { n: 'Wikipedia (en)', link: u => `https://en.wikipedia.org/wiki/Special:Contributions/${u}`, url: u => `https://en.wikipedia.org/w/api.php?action=query&list=users&ususers=${enc(u)}&usprop=editcount%7Cregistration&format=json&origin=*`, parse: r => { const x = r.ok && r.body.query && r.body.query.users && r.body.query.users[0]; if (!x) return ERR(); return ('missing' in x || 'invalid' in x) ? NONE() : FOUND([['Edits', x.editcount], ['Registered', fmtDate(x.registration)]]); } },
-      { n: 'Reddit', hint: 'usually blocks browsers', link: u => `https://www.reddit.com/user/${u}`, url: u => `https://www.reddit.com/user/${enc(u)}/about.json`, parse: r => r.status === 404 ? NONE() : r.ok && r.body.data ? (r.body.data.is_suspended ? FOUND([['Status', 'suspended']]) : FOUND([['Display name', r.body.data.subreddit && r.body.data.subreddit.title], ['Bio', r.body.data.subreddit && r.body.data.subreddit.public_description], ['Karma', r.body.data.total_karma ?? ((r.body.data.link_karma || 0) + (r.body.data.comment_karma || 0))], ['Joined', fmtDate(r.body.data.created_utc)]])) : ERR() },
-      { n: 'DEV Community', hint: 'may block browsers', link: u => `https://dev.to/${u}`, url: u => `https://dev.to/api/users/by_username?url=${enc(u)}`, parse: r => r.status === 404 ? NONE() : r.ok ? FOUND([['Name', r.body.name], ['Summary', r.body.summary], ['Location', r.body.location], ['Website', r.body.website_url], ['GitHub', r.body.github_username], ['X / Twitter', r.body.twitter_username], ['Joined', r.body.joined_at]], { avatar: r.body.profile_image }) : ERR() },
+      { n: 'Reddit', leads: b => { const d = b.data || {}, sr = d.subreddit || {}; return [lead('name', sr.title), ...textLeads(sr.public_description)]; }, hint: 'usually blocks browsers', link: u => `https://www.reddit.com/user/${u}`, url: u => `https://www.reddit.com/user/${enc(u)}/about.json`, parse: r => r.status === 404 ? NONE() : r.ok && r.body.data ? (r.body.data.is_suspended ? FOUND([['Status', 'suspended']]) : FOUND([['Display name', r.body.data.subreddit && r.body.data.subreddit.title], ['Bio', r.body.data.subreddit && r.body.data.subreddit.public_description], ['Karma', r.body.data.total_karma ?? ((r.body.data.link_karma || 0) + (r.body.data.comment_karma || 0))], ['Joined', fmtDate(r.body.data.created_utc)]])) : ERR() },
+      { n: 'DEV Community', leads: b => [lead('name', b.name), lead('loc', b.location), ...urlLeads(b.website_url), b.github_username && socialLead('GitHub', b.github_username), b.twitter_username && socialLead('X / Twitter', b.twitter_username), ...textLeads(b.summary)], hint: 'may block browsers', link: u => `https://dev.to/${u}`, url: u => `https://dev.to/api/users/by_username?url=${enc(u)}`, parse: r => r.status === 404 ? NONE() : r.ok ? FOUND([['Name', r.body.name], ['Summary', r.body.summary], ['Location', r.body.location], ['Website', r.body.website_url], ['GitHub', r.body.github_username], ['X / Twitter', r.body.twitter_username], ['Joined', r.body.joined_at]], { avatar: r.body.profile_image }) : ERR() },
       { n: 'npm', link: u => `https://www.npmjs.com/~${u}`, url: u => `https://registry.npmjs.org/-/v1/search?text=maintainer:${enc(u)}&size=5`, parse: r => !r.ok ? ERR() : r.body.total > 0 ? FOUND([['Packages maintained', r.body.total], ['Examples', r.body.objects.map(o => o.package.name).join(', ')]]) : NONE('No published packages (the account may still exist).') },
-      { n: 'Codeberg', hint: 'usually blocks browsers', link: u => `https://codeberg.org/${u}`, url: u => `https://codeberg.org/api/v1/users/${enc(u)}`, parse: r => r.status === 404 ? NONE() : r.ok ? FOUND([['Name', r.body.full_name], ['Location', r.body.location], ['Website', r.body.website], ['Bio', r.body.description], ['Joined', fmtDate(r.body.created)]], { avatar: r.body.avatar_url }) : ERR() },
+      { n: 'Codeberg', leads: b => [lead('name', b.full_name), lead('loc', b.location), ...urlLeads(b.website), ...textLeads(b.description)], hint: 'usually blocks browsers', link: u => `https://codeberg.org/${u}`, url: u => `https://codeberg.org/api/v1/users/${enc(u)}`, parse: r => r.status === 404 ? NONE() : r.ok ? FOUND([['Name', r.body.full_name], ['Location', r.body.location], ['Website', r.body.website], ['Bio', r.body.description], ['Joined', fmtDate(r.body.created)]], { avatar: r.body.avatar_url }) : ERR() },
       { n: 'YouTube', need: ['gkey'], hint: 'Google key', link: u => `https://www.youtube.com/@${u}`, run: async () => {
         const r = await gapi(`https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&forHandle=${enc('@' + D.user)}`); if (!r.ok) return gErr(r);
         const c = r.body.items && r.body.items[0]; if (!c) return NONE('No channel with this @handle.');
         const sn = c.snippet || {}, st = c.statistics || {};
-        return FOUND([['Channel', sn.title], ['Handle', sn.customUrl], ['About', sn.description], ['Country', sn.country], ['Created', fmtDate(sn.publishedAt)], ['Stats', [st.subscriberCount != null && !st.hiddenSubscriberCount ? `${st.subscriberCount} subscribers` : '', st.videoCount != null ? `${st.videoCount} videos` : ''].filter(Boolean).join(' · ')]], { avatar: sn.thumbnails && sn.thumbnails.default && sn.thumbnails.default.url });
+        return FOUND([['Channel', sn.title], ['Handle', sn.customUrl], ['About', sn.description], ['Country', sn.country], ['Created', fmtDate(sn.publishedAt)], ['Stats', [st.subscriberCount != null && !st.hiddenSubscriberCount ? `${st.subscriberCount} subscribers` : '', st.videoCount != null ? `${st.videoCount} videos` : ''].filter(Boolean).join(' · ')]], { avatar: sn.thumbnails && sn.thumbnails.default && sn.thumbnails.default.url, leads: textLeads(sn.description) });
       } },
     ],
   },
@@ -1187,7 +1220,14 @@ const LIVE_DEFS = {
         else if (/\d{2}$/.test(D.emailLocal)) hints.push(`ends in ${D.emailLocal.slice(-2)}: possibly a birth year or age`);
         if (D.emailLocal.includes('+')) hints.push(`plus-addressing tag "${D.emailLocal.split('+')[1]}": base address is ${D.emailLocal.split('+')[0]}@${dom}`);
         if (dom === 'gmail.com' && D.emailLocal.includes('.')) hints.push(`Gmail ignores dots: same inbox as ${D.emailLocal.replace(/\./g, '').split('+')[0]}@gmail.com`);
-        return { state: cls[1] === 'bad' ? 'bad' : 'found', label: cls[1] === 'bad' ? 'disposable' : 'analyzed', fields: [['Type', cls[0]], ['Local part', D.emailLocal], ['Domain', dom], ['Username pivot', D.emailLocal.split('+')[0]], ['Hints', hints.join(' · ')]].filter(f => f[1]) };
+        // Username leads from the local part. Dots are invalid on GitHub, X, Reddit and most others, so the dotless form goes first.
+        const base = D.emailLocal.split('+')[0], leads = [];
+        const src = { src: 'the email address' };
+        if (base.includes('.')) leads.push(lead('user', base.replace(/\./g, ''), src));
+        leads.push(lead('user', base, src));
+        if (/[_-]/.test(base)) leads.push(lead('user', base.replace(/[._-]/g, ''), src));
+        if (!WEBMAIL.has(dom) && !RELAY[dom] && !DISPOSABLE.has(dom)) leads.push(lead('domain', dom, src));
+        return { leads, state: cls[1] === 'bad' ? 'bad' : 'found', label: cls[1] === 'bad' ? 'disposable' : 'analyzed', fields: [['Type', cls[0]], ['Local part', D.emailLocal], ['Domain', dom], ['Username pivot', D.emailLocal.split('+')[0]], ['Hints', hints.join(' · ')]].filter(f => f[1]) };
       } },
       { n: 'MX records', link: () => `https://mxtoolbox.com/SuperTool.aspx?action=mx%3a${enc(D.emailDomain)}&run=toolpage`, url: () => dohUrl(D.emailDomain, 'MX'), parse: r => {
         if (!r.ok) return ERR(); if (r.body.Status === 3) return { state: 'bad', label: 'no domain', note: 'Domain does not exist (NXDOMAIN): the address cannot receive mail.' };
@@ -1200,7 +1240,7 @@ const LIVE_DEFS = {
         const sha = EMAIL_HASH.email === D.email ? EMAIL_HASH.sha : await sha256Hex(D.email);
         const src = `https://gravatar.com/avatar/${sha}?d=404&s=160`;
         const ok = await new Promise(res => { const i = new Image(); i.referrerPolicy = 'no-referrer'; i.onload = () => res(true); i.onerror = () => res(false); i.src = src; setTimeout(() => res(null), 10000); });
-        return ok ? FOUND([['Avatar', 'Public Gravatar exists: reverse-search the image in the Images tab'], ['Image URL', src]], { avatar: src, pivotImg: src }) : ok === false ? NONE('No Gravatar for this address.') : ERR('Timed out.');
+        return ok ? FOUND([['Avatar', 'Public Gravatar exists: reverse-search the image in the Images tab'], ['Image URL', src]], { avatar: src, pivotImg: src, leads: [lead('img', src)] }) : ok === false ? NONE('No Gravatar for this address.') : ERR('Timed out.');
       } },
       { n: 'PGP key', link: () => 'https://keys.openpgp.org/search?q=' + enc(D.email), url: () => `https://keys.openpgp.org/vks/v1/by-email/${enc(D.email)}`, accept: 'application/pgp-keys', parse: r => r.status === 404 ? NONE('No verified key on keys.openpgp.org.') : r.ok ? FOUND([['Key', 'A verified public key exists for this address'], ['Size', `${String(r.body).length} bytes armored`]]) : ERR() },
       cseCheck('Google web mentions', () => qt(D.email)),
@@ -1304,13 +1344,18 @@ async function runLive(kind) {
       else if (skip) res = { state: 'none', label: 'skipped', note: skip };
       else if (c.local) res = c.local();
       else if (c.run) res = await c.run();
-      else res = c.parse(await getJSON(c.url(D.user), { accept: c.accept, headers: c.headers ? c.headers() : {} }));
+      else {
+        const r = await getJSON(c.url(D.user), { accept: c.accept, headers: c.headers ? c.headers() : {} });
+        res = c.parse(r);
+        if (res.state === 'found' && c.leads && r.body && typeof r.body === 'object') { try { res.leads = c.leads(r.body); } catch (e) {} }
+      }
+      if (res.leads) res.leads = res.leads.flat().filter(Boolean);
     } catch (e) { res = ERR(e && e.name === 'AbortError' ? 'Timed out.' : null); }
     let link = null; try { link = c.link ? c.link(D.user) : null; } catch (e) {}
     const hint = typeof c.hint === 'function' ? c.hint() : c.hint;
     if (LIVE[kind] === st) { st.rows[i] = { n: c.n, link, hint, ...res }; refreshLive(kind); }
   }));
-  if (LIVE[kind] === st) { st.running = false; refreshLive(kind); }
+  if (LIVE[kind] === st) { st.running = false; refreshLive(kind); collectLeads(); refreshLeads(); }
 }
 function runAllLive() { for (const k of Object.keys(LIVE_DEFS)) if (needOk(LIVE_DEFS[k].need)) runLive(k); }
 function refreshLive(kind) { for (const el of $$(`.live[data-kind="${kind}"]`)) el.replaceWith(livePanel(kind)); }
@@ -1361,8 +1406,299 @@ function renderLiveAll() {
     h('div', { class: 'vhead' }, h('div', { class: 'grow' }, h('h2', { text: 'Live checks' }),
       h('p', { text: 'Direct queries to public APIs that permit browser requests. Results are best-effort: some services rate-limit or block cross-site requests, so "unreachable" means check manually, not "doesn\'t exist". Each panel lists exactly which services receive your input.' })),
       h('button', { class: 'btn primary', disabled: !any, text: 'Run all', onclick: runAllLive })),
+    leadsPanel(),
     ...['user', 'email', 'phone', 'domain', 'name'].map(livePanel),
   ];
+}
+
+/* ============================================================
+   One-clue search: detect the clue → run checks → collect leads → auto-pivot
+   Leads only come from identifier-bound sources (profiles matching the same handle,
+   email or domain), never from name searches, which match many different people.
+   ============================================================ */
+const TLDS = new Set('com net org io co dev app me us uk ca de fr es it nl se no fi dk pl ru ch at be au nz ie in jp cn br mx za info biz xyz site online tech ai gg tv fm ly sh to cc blog page link email name pro one art design studio cloud space store shop live life world today news media network edu gov eu asia social website codes digital'.split(' '));
+const isDomainLike = s => { const m = /^([a-z0-9-]+\.)+([a-z]{2,})$/i.exec(String(s).trim()); return !!m && TLDS.has(m[2].toLowerCase()); };
+const PROOF_PLATFORM = { twitter: 'X / Twitter', github: 'GitHub', reddit: 'Reddit', hackernews: 'Hacker News', facebook: 'Facebook', mastodon: 'Mastodon' };
+const RESERVED_PATHS = new Set('about home explore search settings login signup share intent hashtag p reel reels watch pages groups events marketplace profile.php i messages notifications help privacy terms policies jobs company feed stories tags accounts direct live shorts results channel c user'.split(' '));
+const PROFILE_PATTERNS = [
+  [/(^|\.)github\.com$/, /^\/([A-Za-z0-9-]{1,39})\/?$/, 'GitHub'], [/(^|\.)gitlab\.com$/, /^\/([A-Za-z0-9._-]+)\/?$/, 'GitLab'],
+  [/(^|\.)(twitter|x)\.com$/, /^\/@?([A-Za-z0-9_]{1,15})\/?$/, 'X / Twitter'], [/(^|\.)instagram\.com$/, /^\/([A-Za-z0-9._]{1,30})\/?$/, 'Instagram'],
+  [/(^|\.)tiktok\.com$/, /^\/@([A-Za-z0-9._]{2,24})\/?/, 'TikTok'], [/(^|\.)threads\.(net|com)$/, /^\/@([A-Za-z0-9._]+)\/?/, 'Threads'],
+  [/(^|\.)reddit\.com$/, /^\/(?:u|user)\/([A-Za-z0-9_-]{3,20})\/?/, 'Reddit'], [/(^|\.)youtube\.com$/, /^\/@([A-Za-z0-9._-]{3,30})\/?/, 'YouTube'],
+  [/(^|\.)linkedin\.com$/, /^\/in\/([A-Za-z0-9_%-]{3,100})\/?/, 'LinkedIn'], [/(^|\.)facebook\.com$/, /^\/([A-Za-z0-9.]{5,50})\/?$/, 'Facebook'],
+  [/^t\.me$/, /^\/([A-Za-z0-9_]{5,32})\/?$/, 'Telegram'], [/(^|\.)medium\.com$/, /^\/@([A-Za-z0-9._-]+)\/?/, 'Medium'],
+  [/(^|\.)twitch\.tv$/, /^\/([A-Za-z0-9_]{4,25})\/?$/, 'Twitch'], [/^bsky\.app$/, /^\/profile\/([A-Za-z0-9.:-]+)\/?/, 'Bluesky'],
+  [/(^|\.)pinterest\.[a-z.]+$/, /^\/([A-Za-z0-9_]{3,30})\/?$/, 'Pinterest'], [/(^|\.)keybase\.io$/, /^\/([A-Za-z0-9_]{2,16})\/?$/, 'Keybase'],
+  [/(^|\.)snapchat\.com$/, /^\/add\/([A-Za-z0-9._-]{3,15})\/?/, 'Snapchat'], [/(^|\.)soundcloud\.com$/, /^\/([A-Za-z0-9_-]{3,25})\/?$/, 'SoundCloud'],
+  [/(^|\.)linktr\.ee$/, /^\/([A-Za-z0-9._]{2,30})\/?$/, 'Linktree'], [/(^|\.)mastodon\.social$/, /^\/@([A-Za-z0-9_]{1,30})\/?/, 'Mastodon'],
+  [/^dev\.to$/, /^\/([A-Za-z0-9_]{2,30})\/?$/, 'DEV'], [/(^|\.)chess\.com$/, /^\/member\/([A-Za-z0-9_-]{3,25})\/?/, 'Chess.com'],
+  [/^lichess\.org$/, /^\/@\/([A-Za-z0-9_-]{2,30})\/?/, 'Lichess'], [/(^|\.)steamcommunity\.com$/, /^\/id\/([A-Za-z0-9_-]{2,32})\/?/, 'Steam'],
+];
+function profileFromUrl(u) {
+  let x; try { x = new URL(u); } catch (e) { return null; }
+  const host = x.hostname.replace(/^(www|m|mobile|old)\./, '').toLowerCase();
+  if (host === 'news.ycombinator.com' && x.searchParams.get('id')) return { platform: 'Hacker News', handle: x.searchParams.get('id') };
+  for (const [hre, pre, platform] of PROFILE_PATTERNS) {
+    if (!hre.test(host)) continue;
+    const m = pre.exec(x.pathname); if (!m) return null;
+    let handle = decodeURIComponent(m[1]);
+    if (RESERVED_PATHS.has(handle.toLowerCase())) return null;
+    if (platform === 'Bluesky') handle = handle.replace(/\.bsky\.social$/i, '');
+    return { platform, handle };
+  }
+  return null;
+}
+const COUNTRY_BY_NAME = { usa: 'US', 'united states': 'US', us: 'US', 'u.s.': 'US', 'u.s.a': 'US', america: 'US', canada: 'CA', uk: 'GB', 'united kingdom': 'GB', england: 'GB', scotland: 'GB', wales: 'GB', 'great britain': 'GB', australia: 'AU', 'new zealand': 'NZ', ireland: 'IE', india: 'IN', germany: 'DE', deutschland: 'DE', france: 'FR', spain: 'ES', 'españa': 'ES', italy: 'IT', italia: 'IT', netherlands: 'NL', 'the netherlands': 'NL', brazil: 'BR', brasil: 'BR', mexico: 'MX', 'méxico': 'MX', 'south africa': 'ZA' };
+const PLACE = /^[\p{L}][\p{L} .'-]{1,40}$/u;
+function parseLoc(s) {
+  const parts = String(s || '').split(/\s*[,·|]\s*/).map(x => x.trim()).filter(Boolean);
+  if (!parts.length || parts.length > 3) return null;
+  let p = parts.slice();
+  if (p.length === 3 && COUNTRY_BY_NAME[p[2].toLowerCase().replace(/\.$/, '')] === 'US') p = p.slice(0, 2);
+  if (p.length === 1) {
+    const m = /^(.+?)\s+([A-Za-z]{2})$/.exec(p[0]);                       // "Seattle WA"
+    if (m && US_STATES[m[2].toUpperCase()] && PLACE.test(m[1])) return { city: m[1], state: m[2].toUpperCase(), country: 'US' };
+    const st = STATE_BY_NAME[p[0].toLowerCase()]; if (st) return { state: st, country: 'US' };
+    return null;
+  }
+  if (p.length === 2 && PLACE.test(p[0])) {
+    const st = p[1].length === 2 ? p[1].toUpperCase() : STATE_BY_NAME[p[1].toLowerCase()];
+    if (st && US_STATES[st]) return { city: p[0], state: st, country: 'US' };
+    const cc = COUNTRY_BY_NAME[p[1].toLowerCase().replace(/\.$/, '')];
+    if (cc) return { city: p[0], country: cc };
+  }
+  return null;
+}
+const NOT_A_NAME = /\b(official|team|inc|llc|ltd|studios?|games|music|records|media|news|tv|app|bot|the|and|of|club|company|shop|store|podcast|channel|dev|labs?)\b/i;
+function cleanName(s) {
+  const t = String(s || '').replace(/[^\p{L}\p{M}\s'.-]/gu, ' ').replace(/\s+/g, ' ').trim();
+  const w = t.split(' ');
+  if (w.length < 2 || w.length > 4 || t.length > 40 || NOT_A_NAME.test(t)) return null;
+  if (!w.every(x => /^\p{L}/u.test(x))) return null;
+  return t;
+}
+function lead(type, value, extra = {}) {
+  let v = value == null ? '' : String(value).trim();
+  if (type === 'name') v = cleanName(v) || '';
+  if (type === 'email') v = /^[^\s@]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/i.test(v) ? v.toLowerCase() : '';
+  if (type === 'domain') v = v.toLowerCase().replace(/^www\./, '');
+  if (type === 'img') v = safeUrl(v) || '';
+  if (type === 'loc' && v.length > 60) v = '';
+  if (type === 'user') v = v.replace(/^@/, '');
+  return v ? { type, value: v, ...extra } : null;
+}
+const socialLead = (platform, handle, url) => { const hd = String(handle || '').replace(/^@/, '').trim(); return hd ? lead('social', `${platform}: ${hd}`, { platform, handle: hd, url: safeUrl(url) || null }) : null; };
+function urlLeads(u) {
+  if (!u) return [];
+  const url = safeUrl(/^https?:\/\//i.test(u) ? u : 'https://' + String(u).trim()); if (!url) return [];
+  const p = profileFromUrl(url);
+  if (p) return [socialLead(p.platform, p.handle, url)];
+  const host = hostOf(url);
+  if (!host || !isDomainLike(host) || /(^|\.)(google|bing|wikipedia|archive|youtube|facebook|instagram|twitter|x|tiktok|linkedin|github|gitlab|reddit|medium|t|linktr)\.[a-z]+$/.test(host)) return [];
+  return [lead('domain', host, { url })];
+}
+function textLeads(text) {
+  const s = String(text || ''), out = [];
+  for (const m of s.matchAll(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g)) out.push(lead('email', m[0]));
+  for (const m of s.matchAll(/\bhttps?:\/\/[^\s<>"')\]]+/gi)) out.push(...urlLeads(m[0].replace(/[.,;:!?]+$/, '')));
+  return out;
+}
+
+const LEADS = new Map();   // normalized key → { type, value, platform?, handle?, url?, sources: Map(check → link), used, auto, dismissed }
+const PIVOT = { token: 0, running: false, status: '', log: [], auto: true };
+const MAX_ROUNDS = 4;
+const LEAD_LABEL = { name: 'Name', loc: 'Location', employer: 'Employer', email: 'Email', domain: 'Website', social: 'Linked account', user: 'Username', img: 'Photo' };
+const LEAD_ORDER = ['name', 'loc', 'employer', 'email', 'domain', 'social', 'user', 'img'];
+const KIND_LABEL = { user: 'username', email: 'email', phone: 'phone', domain: 'domain', name: 'name records' };
+const leadKey = l => l.type + '|' + (l.type === 'social' ? `${l.platform}|${l.handle}` : l.value).toLowerCase().replace(/\s+/g, ' ');
+const nameKey = v => { const w = cleanName(v); if (!w) return ''; const p = w.toLowerCase().split(' '); return p[0].replace(/\.$/, '') + ' ' + p[p.length - 1]; };
+const locKey = v => { const p = parseLoc(v); return p ? [p.city || '', p.state || '', p.country || ''].join('|').toLowerCase() : ''; };
+const activeLeads = () => [...LEADS.values()].filter(l => !l.dismissed);
+function resetPivot() { PIVOT.token++; Object.assign(PIVOT, { running: false, status: '', log: [] }); LEADS.clear(); }
+function collectLeads() {
+  for (const st of Object.values(LIVE)) for (const r of st.rows) for (const l of (r.leads || [])) {
+    if (!l || !l.value) continue;
+    if ((l.type === 'user' && l.value.toLowerCase() === D.user.toLowerCase()) || (l.type === 'email' && l.value === D.email)) continue;
+    const k = leadKey(l);
+    const cur = LEADS.get(k) || { ...l, sources: new Map(), used: false, auto: false, dismissed: false };
+    const sn = l.src || r.n;
+    if (!cur.sources.has(sn)) cur.sources.set(sn, (l.url && safeUrl(l.url)) || (r.link && safeUrl(r.link)) || null);
+    LEADS.set(k, cur);
+  }
+}
+function leadInSubject(l) {
+  const v = l.value.toLowerCase();
+  switch (l.type) {
+    case 'name': return !!D.has.name && nameKey(l.value) === nameKey(D.name);
+    case 'loc': { const p = parseLoc(l.value); return !!p && (!p.city || p.city.toLowerCase() === D.city.toLowerCase()) && (!p.state || p.state === D.state) && !!(D.city || D.state); }
+    case 'email': return v === D.email;
+    case 'domain': return v === D.domain;
+    case 'employer': return v === D.employer.toLowerCase();
+    case 'user': return v === D.user.toLowerCase();
+    case 'social': return l.handle.toLowerCase() === D.user.toLowerCase();
+    case 'img': return l.value === D.img;
+  }
+  return false;
+}
+// Distinct identities among leads of one type (e.g. two different names) mean the sources may be different people.
+function conflicts(type) {
+  const keyer = type === 'name' ? nameKey : type === 'loc' ? locKey : v => v.toLowerCase();
+  const groups = new Map();
+  for (const l of activeLeads().filter(x => x.type === type)) { const k = keyer(l.value); if (!k) continue; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(l); }
+  return [...groups.values()];
+}
+function autoFill() {
+  const filled = [], srcs = l => [...l.sources.keys()].join(', ');
+  const empty = (...ks) => ks.every(k => !String(RAW[k] || '').trim());
+  const apply = (fields, l, label) => {
+    for (const [k, v] of Object.entries(fields)) if (v != null && !String(RAW[k] || '').trim()) { RAW[k] = v; AUTO[k] = [...l.sources.keys()][0]; }
+    l.used = l.auto = true;
+    filled.push(`${label} "${l.value}" ← ${srcs(l)}${l.sources.size > 1 ? ` (${l.sources.size} sources agree)` : ''}`);
+  };
+  const pick = (type, keyer) => { // the single identity all sources agree on, else nothing
+    const g = conflicts(type).filter(x => !keyer || x.every(l => keyer(l.value)));
+    if (g.length !== 1) return null;
+    return g[0].sort((a, b) => b.sources.size - a.sources.size)[0];
+  };
+  if (empty('first', 'last')) { const l = pick('name'); if (l) { const w = cleanName(l.value).split(' '); apply({ first: w[0], last: w[w.length - 1], middle: w.length > 2 ? w.slice(1, -1).join(' ') : null }, l, 'Name'); } }
+  if (empty('city', 'state')) { const l = pick('loc', locKey); if (l) { const p = parseLoc(l.value); apply({ city: p.city, state: p.state }, l, 'Location'); if (p.country && p.country !== RAW.country && !D.has.phone) RAW.country = p.country; } }
+  if (empty('employer')) { const l = pick('employer'); if (l) apply({ employer: l.value }, l, 'Employer'); }
+  if (empty('email')) { const l = pick('email'); if (l) apply({ email: l.value }, l, 'Email'); }
+  if (empty('domain')) { const l = pick('domain'); if (l) apply({ domain: l.value }, l, 'Website'); }
+  if (empty('user')) { const u = activeLeads().filter(l => l.type === 'user'); if (u.length) apply({ user: u[0].value }, u[0], 'Username'); }
+  if (filled.length) saveAuto();
+  return filled;
+}
+function useLead(l) {
+  const set = {};
+  if (l.type === 'name') { const w = cleanName(l.value).split(' '); Object.assign(set, { first: w[0], last: w[w.length - 1], middle: w.length > 2 ? w.slice(1, -1).join(' ') : '' }); }
+  else if (l.type === 'loc') { const p = parseLoc(l.value); Object.assign(set, p ? { city: p.city || '', state: p.state || '' } : { city: l.value }); }
+  else if (l.type === 'social') set.user = l.handle;
+  else set[{ employer: 'employer', email: 'email', domain: 'domain', img: 'img', user: 'user' }[l.type]] = l.value;
+  for (const [k, v] of Object.entries(set)) { RAW[k] = v; delete AUTO[k]; }
+  l.used = true; saveAuto(); fillForm(); onSubjectChange();
+  toast(`${LEAD_LABEL[l.type]} added to the subject`);
+  continuePivot();
+}
+function detectClue(raw) {
+  const s = String(raw || '').trim(); if (!s) return null;
+  const looksUrl = /^https?:\/\//i.test(s) || /^(www\.)?[a-z0-9-]+(\.[a-z0-9-]+)+\/\S+/i.test(s);
+  if (looksUrl) {
+    const u = safeUrl(/^https?:\/\//i.test(s) ? s : 'https://' + s);
+    if (u) {
+      const p = profileFromUrl(u);
+      if (p) return { label: `${p.platform} profile`, what: `username "${p.handle}"`, fields: { user: p.handle } };
+      const host = hostOf(u);
+      if (PROFILE_PATTERNS.some(([hre]) => hre.test(host)) || host === 'news.ycombinator.com') return null; // a social site, but not a profile page
+      if (/\.(jpe?g|png|gif|webp|heic|avif)(\?|#|$)/i.test(u)) return { label: 'photo URL', what: 'reverse image search', fields: { img: u } };
+      return { label: 'website', what: `domain ${hostOf(u)}`, fields: { domain: hostOf(u) } };
+    }
+  }
+  if (/^[^\s@]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/i.test(s)) return { label: 'email', what: 'email checks, then its username and domain', fields: { email: s } };
+  const digits = s.replace(/\D/g, '');
+  if (/^\+?[\d\s().-]+$/.test(s) && digits.length >= 7 && digits.length <= 15) return { label: 'phone number', what: 'number analysis and reverse lookups', fields: { phone: s } };
+  const bare = s.replace(/^@/, '');
+  if (isDomainLike(bare) && !s.startsWith('@')) return { label: 'domain', what: 'registration, DNS and history', fields: { domain: bare.toLowerCase() } };
+  if (/^@?[A-Za-z0-9._-]{2,40}$/.test(s)) return { label: 'username', what: 'profile checks on 14 platforms', fields: { user: bare } };
+  const [namePart, ...rest] = s.split(',');
+  const words = namePart.trim().split(/\s+/);
+  if (words.length >= 2 && words.length <= 5 && words.every(w => /^[\p{L}][\p{L}\p{M}'.-]*$/u.test(w))) {
+    const f = { first: words[0], last: words[words.length - 1] };
+    if (words.length > 2) f.middle = words.slice(1, -1).join(' ');
+    const locText = rest.join(',').trim();
+    if (locText) { const loc = parseLoc(locText); if (loc) { if (loc.city) f.city = loc.city; if (loc.state) f.state = loc.state; if (loc.country) f.country = loc.country; } else f.city = locText; }
+    return { label: 'name', what: 'public-record APIs and people-search links' + (locText ? ` near ${locText}` : ''), fields: f };
+  }
+  return null;
+}
+function clueHint() {
+  const v = $('#clue').value, hint = $('#clueHint'), d = detectClue(v);
+  hint.textContent = '';
+  if (!v.trim()) hint.append('Detects what it is, runs every check, then follows what it finds.');
+  else if (d) hint.append(`Looks like ${/^([aeio]|u(?!s))/i.test(d.label) ? 'an' : 'a'} `, h('b', { text: d.label }), `: ${d.what}.`);
+  else hint.append("Not sure what that is. Try an email, @username, phone number, full name (add \", City ST\" to narrow), profile link or website.");
+}
+async function investigate(text) {
+  const det = detectClue(text);
+  if (!det) { clueHint(); $('#clue').focus(); return; }
+  const prev = { raw: { ...RAW }, auto: { ...AUTO } };
+  resetPivot();
+  for (const k of Object.keys(LIVE)) delete LIVE[k];
+  RAW = { country: RAW.country || 'US', ...det.fields };
+  AUTO = {}; saveAuto();
+  PIVOT.auto = $('#clueAuto').checked; store.set('ps.autoPivot', PIVOT.auto);
+  PIVOT.log = [`Started from ${det.label}: ${text.trim()}`];
+  fillForm(); D = derive(RAW); store.set('ps.subject', RAW); updateFillCount(); updateTabCounts();
+  go('overview');
+  if (matchMedia('(max-width: 980px)').matches) $('.work').scrollIntoView({ behavior: 'smooth' }); // results sit below the form on narrow screens
+  if (Object.entries(prev.raw).some(([k, v]) => k !== 'country' && String(v || '').trim())) {
+    banner(`New search from ${det.label}. The previous subject was replaced.`, [h('button', { class: 'btn sm', text: 'Undo', onclick: () => {
+      resetPivot(); RAW = prev.raw; AUTO = prev.auto; saveAuto(); fillForm(); onSubjectChange(); const b = $('#banner'); if (b) b.remove();
+    } })]);
+  }
+  await pivotLoop(PIVOT.token);
+}
+function continuePivot() { const t = ++PIVOT.token; pivotLoop(t); }
+async function pivotLoop(token) {
+  PIVOT.running = true;
+  for (let round = 1; round <= MAX_ROUNDS; round++) {
+    const kinds = Object.keys(LIVE_DEFS).filter(k => needOk(LIVE_DEFS[k].need) && (!LIVE[k] || LIVE[k].key !== LIVE_DEFS[k].key()));
+    if (!kinds.length) break;
+    PIVOT.status = `Round ${round}: checking ${kinds.map(k => KIND_LABEL[k]).join(', ')}…`; refreshLeads();
+    await Promise.all(kinds.map(k => runLive(k)));
+    if (PIVOT.token !== token) return;
+    collectLeads();
+    if (!PIVOT.auto) break;
+    const filled = autoFill();
+    if (!filled.length) break;
+    PIVOT.log.push(...filled.map(f => `Round ${round}: filled ${f}`));
+    fillForm(); D = derive(RAW); store.set('ps.subject', RAW); updateFillCount(); updateTabCounts();
+    clearTimeout(rT); render();
+  }
+  if (PIVOT.token !== token) return;
+  PIVOT.running = false;
+  const n = activeLeads().length;
+  PIVOT.status = n ? `Done: ${plural(n, 'lead')}. Use the tabs for sources that can't be checked automatically (people-search sites, courts, social search).` : 'Done: no leads from automatic checks. Work through the tabs for manual sources.';
+  render();
+}
+function refreshLeads() {
+  const el = $('.leads'), n = leadsPanel();
+  if (el) { if (n) el.replaceWith(n); return; }
+  if (n && (CUR === 'overview' || CUR === 'live') && !$('#filter').value.trim()) { const head = $('#view .vhead'); if (head) head.after(n); }
+}
+function leadsPanel(force) {
+  const leads = activeLeads();
+  if (!force && !leads.length && !PIVOT.running && !PIVOT.log.length) return null;
+  const el = h('section', { class: 'live leads' }, h('header', null, h('h3', { text: 'Discovered leads' }),
+    PIVOT.running ? h('span', { class: 'badge b-pending', text: 'searching' }) : null,
+    h('span', { class: 'small muted', text: PIVOT.status }),
+    h('span', { class: 'sub', text: 'Facts pulled from profiles that match the same handle, email or website, never from name searches. Different people can share a handle, so a one-source lead is unverified; agreement between independent sources makes it stronger.' })));
+  if (PIVOT.log.length) el.append(h('div', { class: 'small muted', style: 'padding:8px 14px;border-bottom:1px solid var(--line)' }, PIVOT.log.map(x => h('div', { text: '• ' + x }))));
+  for (const t of ['name', 'loc']) {
+    const g = conflicts(t);
+    if (g.length > 1) el.append(h('div', { class: 'warnrow', text: `Conflicting ${t === 'name' ? 'names' : 'locations'}: ${g.map(x => `"${x[0].value}" (${[...new Set(x.flatMap(l => [...l.sources.keys()]))].join(', ')})`).join(' vs ')}. These accounts may belong to different people, so nothing was auto-filled; pick one yourself.` }));
+  }
+  const sorted = leads.sort((a, b) => LEAD_ORDER.indexOf(a.type) - LEAD_ORDER.indexOf(b.type) || b.sources.size - a.sources.size);
+  if (!sorted.length) el.append(h('div', { class: 'lempty', text: PIVOT.running ? 'Checking…' : 'No leads yet.' }));
+  for (const l of sorted) el.append(leadRow(l));
+  return el;
+}
+function leadRow(l) {
+  const srcs = [...l.sources.keys()], inSub = leadInSubject(l);
+  const firstLink = [...l.sources.values()].find(Boolean);
+  const acts = [];
+  if (!inSub) acts.push(h('button', { class: 'btn sm', text: l.type === 'social' ? 'Check this handle' : l.type === 'img' ? 'Use as photo' : 'Add to subject', onclick: () => useLead(l) }));
+  if (l.type === 'social' && l.url) acts.push(h('a', { class: 'btn sm ghost', href: l.url, target: '_blank', rel: 'noopener noreferrer', text: 'Open ↗' }));
+  if (l.type === 'domain') acts.push(h('a', { class: 'btn sm ghost', href: 'https://' + l.value, target: '_blank', rel: 'noopener noreferrer', text: 'Visit ↗' }));
+  if (['name', 'email', 'employer', 'user'].includes(l.type)) acts.push(h('a', { class: 'btn sm ghost', href: google(qt(l.value)), target: '_blank', rel: 'noopener noreferrer', text: 'Google ↗' }));
+  if (firstLink) acts.push(pinLink(`${LEAD_LABEL[l.type]}: ${l.value} (via ${srcs.join(', ')})`, firstLink, 'Discovered leads'));
+  acts.push(h('button', { class: 'pinlink', title: 'Dismiss this lead', text: '✕ dismiss', onclick: () => { l.dismissed = true; refreshLeads(); } }));
+  return h('div', { class: 'lrow' },
+    h('div', { class: 'ln' }, LEAD_LABEL[l.type], inSub ? h('span', { class: 'flaky', text: l.auto ? 'auto-filled' : 'in subject' }) : null),
+    h('span', { class: 'badge ' + (srcs.length > 1 ? 'b-found' : 'b-none'), text: srcs.length > 1 ? `${srcs.length} sources` : '1 source' }),
+    h('div', { class: 'ld' }, l.type === 'img' ? h('img', { class: 'av', src: l.value, alt: '', referrerpolicy: 'no-referrer', loading: 'lazy' }) : null,
+      h('div', { style: 'font-weight:600;overflow-wrap:anywhere', text: l.type === 'img' ? 'Profile photo' : l.value }),
+      h('div', { class: 'small muted', text: 'via ' + srcs.join(', ') }), h('div', { class: 'row', style: 'margin-top:6px;gap:6px' }, acts)));
 }
 
 /* ============================================================
@@ -1379,7 +1715,7 @@ function nameVariants() {
 function usernameCandidates() {
   const out = [];
   const f = slug(D.first, ''), l = slug(D.last, ''), m = D.middle ? slug(D.middle, '')[0] : '';
-  if (f && l) {
+  if (f && l && !/%/.test(f + l)) {
     const fi = f[0], li = l[0], y = D.byear ? String(D.byear) : '', yy = y.slice(2);
     out.push(f + l, `${f}.${l}`, `${f}_${l}`, `${f}-${l}`, fi + l, `${fi}.${l}`, f + li, l + f, `${l}.${f}`, `${l}_${f}`, l + fi, f, `${f}${l}1`, `real${f}${l}`, `the${f}${l}`, `its${f}${l}`, `${f}${l}official`);
     if (m) out.push(fi + m + l, `${f}${m}${l}`, `${f}.${m}.${l}`);
@@ -1400,10 +1736,11 @@ function renderOverview() {
   const out = [h('div', { class: 'vhead' }, h('div', { class: 'grow' }, h('h2', { text: D.nameM || D.user || D.email || (D.ph && D.ph.intl) || 'New search' }),
     h('p', { text: 'Start with whatever you know: a name, handle, email, phone, address or photo. Each identifier unlocks pivots to the others. Pin anything useful to the case file as you go.' })),
     h('div', { class: 'row' }, h('div', { class: 'stat' }, h('b', { text: String(a) }), h('span', { text: `of ${t} link tools ready` })), h('div', { class: 'stat' }, h('b', { text: String(CASE.pins.length) }), h('span', { text: 'pinned findings' }))))];
+  const lp = leadsPanel(); if (lp) out.push(lp);
   if (!D.has.anyid && !D.has.domain && !D.has.img) {
     out.push(h('div', { class: 'card' }, h('h3', { text: 'How it works' }), h('div', { class: 'kv', style: 'margin-top:8px' },
-      h('dt', { text: '1. Identify' }), h('dd', { text: 'Enter a name, username, email, phone, address, domain or photo URL in the subject panel.' }),
-      h('dt', { text: '2. Pivot' }), h('dd', { text: 'This page generates name variants, likely usernames and email guesses. Click a candidate to check it.' }),
+      h('dt', { text: '1. Identify' }), h('dd', null, 'Type a single clue (email, @username, phone, full name, profile link or website) into ', h('b', { text: 'Start from one clue' }), ' and press Find. It runs every automatic check, pulls names, locations, websites and linked accounts from matching profiles, and keeps following them. Or fill in the subject fields yourself.'),
+      h('dt', { text: '2. Pivot' }), h('dd', { text: 'Review the discovered leads: a lead confirmed by two independent sources is much stronger than one. This page also generates name variants, likely usernames and email guesses.' }),
       h('dt', { text: '3. Search' }), h('dd', { text: 'Each tab holds pre-filled links to search engines, social networks, people-search sites, court and business records, and more.' }),
       h('dt', { text: '4. Verify' }), h('dd', { text: 'Live checks query public APIs directly. The CLI toolkit generates commands for Sherlock, Maigret, holehe, PhoneInfoga and others.' }),
       h('dt', { text: '5. Document' }), h('dd', { text: 'Pin findings, rate confidence, take notes and export a Markdown/JSON report from the Case file.' }))));
@@ -1514,6 +1851,7 @@ function gsPanel() {
 function renderPermutator() {
   const card = h('div', { class: 'card' }, h('h3', { text: 'Email permutator' }));
   if (!D.has.name) { card.append(h('p', { class: 'sub', style: 'margin:0', text: 'Enter a first and last name to generate likely addresses.' })); return card; }
+  if (/%/.test(slug(D.first, '') + slug(D.last, ''))) { card.append(h('p', { class: 'sub', style: 'margin:0', text: 'Address patterns need a Latin-script name. Enter a romanized spelling (e.g. Zhang Wei) to generate them.' })); return card; }
   const domains = [...new Set([D.domain, D.has.email && !WEBMAIL.has(D.emailDomain) ? D.emailDomain : '', 'gmail.com', 'outlook.com', 'yahoo.com', 'icloud.com', 'hotmail.com', 'aol.com', 'proton.me'].filter(Boolean))];
   const sel = h('select', { class: 'inp', style: 'width:auto' }, domains.map(d => h('option', { value: d, text: '@' + d })), h('option', { value: '', text: 'custom…' }));
   const custom = h('input', { class: 'inp', style: 'width:180px;display:none', placeholder: 'company.com' });
@@ -1832,6 +2170,9 @@ function caseMarkdown() {
   else { L.push('| # | Source | Confidence | Note | Captured |', '|---|---|---|---|---|'); CASE.pins.forEach((p, i) => L.push(`| ${i + 1} | [${md(p.title)}](${p.url}) | ${p.conf} | ${md(p.note)} | ${p.at.slice(0, 16).replace('T', ' ')} |`)); }
   const live = Object.entries(LIVE).flatMap(([k, s]) => s.rows.filter(r => r.state === 'found').map(r => `- **${r.n}** (${LIVE_DEFS[k].title}): ${(r.fields || []).map(([a, b]) => `${a}: ${Array.isArray(b) ? b.join(', ') : b}`).join('; ')}${r.list ? r.list.map(x => ` ${x.t}`).join(';') : ''}`));
   if (live.length) L.push('', '## Live-check hits (this session)', '', ...live);
+  const leads = activeLeads().sort((a, b) => LEAD_ORDER.indexOf(a.type) - LEAD_ORDER.indexOf(b.type) || b.sources.size - a.sources.size);
+  if (leads.length) L.push('', '## Discovered leads (this session)', '', '| Type | Value | Sources | Status |', '|---|---|---|---|', ...leads.map(l => `| ${LEAD_LABEL[l.type]} | ${md(l.value)} | ${md([...l.sources.keys()].join(', '))} | ${leadInSubject(l) ? (l.auto ? 'auto-filled' : 'in subject') : 'unverified'} |`));
+  if (PIVOT.log.length) L.push('', '### Pivot log', '', ...PIVOT.log.map(x => '- ' + md(x)));
   if (CASE.notes) L.push('', '## Notes', '', CASE.notes);
   return L.join('\n') + '\n';
 }
@@ -1962,6 +2303,11 @@ document.addEventListener('keydown', e => {
   if (e.key === '/' && !typing) { e.preventDefault(); $('#filter').focus(); }
   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); go('live'); runAllLive(); }
 });
+$('#clueAuto').checked = store.get('ps.autoPivot', true);
+$('#clue').addEventListener('input', clueHint);
+$('#clue').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); investigate(e.target.value); } });
+$('#clueGo').onclick = () => investigate($('#clue').value);
+$('#clueAuto').onchange = e => { PIVOT.auto = e.target.checked; store.set('ps.autoPivot', e.target.checked); };
 fillForm(); renderTabs(); D = derive(RAW); if (D.has.email) hashEmail(); render();
 
 // libphonenumber: optional, loaded lazily with SRI. Falls back to basic NANP parsing if unavailable.
