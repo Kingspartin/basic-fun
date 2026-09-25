@@ -193,6 +193,30 @@ table.pins input,table.pins select{height:28px;border-radius:6px;border:1px soli
 table.pins .x{border:0;background:transparent;color:var(--faint);cursor:pointer;font-size:16px}
 table.pins .x:hover{color:var(--bad)}
 
+/* skip trace */
+.group{scroll-margin-top:130px}
+.progress{height:6px;border-radius:99px;background:var(--panel2);border:1px solid var(--line);overflow:hidden}
+.progress i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+.steps{display:grid;margin-top:6px}
+.step{display:grid;grid-template-columns:18px minmax(0,1fr) 128px;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.step:first-child{border-top:0}
+.step .sn{font-family:var(--mono);font-size:11px;color:var(--faint);text-align:right}
+.step b{font-size:13px;font-weight:600}
+.step .sd{display:block;font-size:12px;color:var(--muted)}
+.step a{font-size:11.5px;color:var(--faint);text-decoration:none;margin-left:6px}
+.step a:hover{color:var(--accent)}
+.step select{height:28px;border-radius:6px;border:1px solid var(--line);background:var(--panel2);padding:0 8px;width:100%;outline:none}
+.step.s-clear b,.step.s-lead b{color:var(--ok)}
+.step.s-hit b{color:var(--bad)}
+.step.s-dead b{color:var(--muted);text-decoration:line-through}
+.alert{margin-top:8px;padding:8px 10px;border-radius:8px;font-size:12.5px;color:var(--text);background:var(--bad-soft);border:1px solid color-mix(in srgb,var(--bad) 30%,transparent)}
+.alert b{color:var(--bad)}
+details.card>summary{cursor:pointer;list-style:none;font-weight:600;font-size:14px;display:flex;align-items:center;gap:8px}
+details.card>summary::-webkit-details-marker{display:none}
+details.card>summary::before{content:"\25B8";color:var(--faint);font-size:11px}
+details.card[open]>summary::before{content:"\25BE"}
+details.card[open]>summary{margin-bottom:6px}
+
 .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(20px);background:var(--text);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;transition:.18s;z-index:50}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .foot{padding:0 18px 30px;color:var(--faint);font-size:12px}
@@ -215,6 +239,9 @@ table.pins .x:hover{color:var(--bad)}
 .fld.s2,.fld.s3{grid-column:span 3}
 .fld.s4{grid-column:span 6}
 .tabs{top:103px}
+.group{scroll-margin-top:160px}
+.step{grid-template-columns:18px minmax(0,1fr)}
+.step select{grid-column:2}
 }
 @media print{.top,.tabs,.subject,.notice,.tact{display:none}.shell{display:block}}
 </style>
@@ -235,7 +262,7 @@ table.pins .x:hover{color:var(--bad)}
 
 <div class="notice" id="notice">
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--warn);flex:none;margin-top:1px"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
-  <div><b>Use lawfully.</b> Intended for self-audits, due diligence, journalism, fraud/identity verification and authorized investigations. People-search data is often wrong or stale, and under the FCRA it can't be used for employment, tenant, credit or insurance decisions. Don't use it to stalk, harass or locate someone who doesn't want to be found. Everything runs in your browser; searches go straight to the sites you open.</div>
+  <div><b>Use lawfully.</b> Intended for self-audits, due diligence, journalism, fraud/identity verification, skip tracing with a permissible purpose (service of process, judgment recovery, heir and beneficiary searches) and authorized investigations. People-search data is often wrong or stale, and under the FCRA it can't be used for employment, tenant, credit or insurance decisions. Don't use it to stalk or harass anyone, or to find someone for personal reasons who has chosen not to be found. Everything runs in your browser; searches go straight to the sites you open.</div>
   <button class="btn sm ghost" id="noticeBtn">Got it</button>
 </div>
 
@@ -712,6 +739,74 @@ const MODULES = [
     ],
   },
   {
+    id: 'skip', title: 'Skip trace', blurb: 'Locate someone whose current whereabouts are unknown, for a documented purpose such as serving process, recovering a judgment or finding an heir. Screen first (deceased, custody, active duty, bankruptcy), then work the last known address, address history, relatives, employer and online recency, logging every lead.', pre: renderSkipTrace,
+    groups: [
+      { id: 'deceased', t: 'Screen: deceased', need: ['name'], note: 'Run this first. The public SSDI copy ends in 2014 (the full Death Master File is limited to NTIS-certified users), so check obituaries for recent deaths.', items: [
+        T('SSDI (FamilySearch)', 'Social Security Death Index (free login)', () => `https://www.familysearch.org/search/record/results?q.givenName=${enc(D.first)}&q.surname=${enc(D.last)}&f.collectionId=1202535` + (D.byear ? `&q.birthLikeDate.from=${D.byear - 1}&q.birthLikeDate.to=${D.byear + 1}` : '')),
+        T('Find a Grave', 'Burials & memorials', () => `https://www.findagrave.com/memorial/search?firstname=${enc(D.first)}&lastname=${enc(D.last)}`),
+        T('Legacy.com (via Google)', 'Obituaries', () => google(`site:legacy.com ${nameQ()}`)),
+        T('Obituaries (Google)', 'Obits naming the subject', () => google(`${nameQ()} obituary ${D.city || ''}`.trim())),
+      ] },
+      { id: 'screen', t: 'Screen: custody, military & bankruptcy', need: HOME, note: 'A hit here changes what you are allowed to do next. The checklist above explains each one.', items: [
+        T('BOP inmate locator', 'Federal inmates since 1982', () => 'https://www.bop.gov/inmateloc/', HOME),
+        T('VINELink', 'State & county custody status', () => 'https://vinelink.vineapps.com/', HOME),
+        T('Jail rosters (Google)', 'County bookings & rosters', () => google(`${nameQ()} (inmate OR booked OR "jail roster") ${D.stateFull || ''}`.trim()), ['name']),
+        T('SCRA active-duty status', 'DMDC certificate for SCRA affidavits', () => 'https://scra.dmdc.osd.mil/', HOME),
+        T('PACER Case Locator', 'Nationwide bankruptcy index (account)', () => 'https://pcl.uscourts.gov/pcl/index.jsf', HOME),
+        T('CourtListener RECAP', 'Free mirror of federal dockets', () => 'https://www.courtlistener.com/?type=r&q=' + enc(nameQ()), ['name']),
+        T('Bankruptcy (Google)', 'Chapter 7 / 13 mentions', () => google(`${nameQ()} bankruptcy ("chapter 7" OR "chapter 13")`), ['name']),
+      ] },
+      { id: 'lastaddr', t: 'Last known address', need: ['addr'], note: 'Who lives there now, who owns it and whether it sold. Current residents and neighbors are often the fastest route to a forwarding address.', items: [
+        T('TruePeopleSearch', 'Current & past residents', () => `https://www.truepeoplesearch.com/resultaddress?streetaddress=${enc(D.addr)}&citystatezip=${enc(D.loc || D.zip)}`),
+        T('FastPeopleSearch', 'Residents', () => `https://www.fastpeoplesearch.com/address/${slug(D.addr)}_${slug(D.loc || D.zip)}`),
+        T('Whitepages', 'Residents & owner', () => `https://www.whitepages.com/address/${dash(D.addr)}/${D.cityState || enc(D.zip)}`),
+        T('Zillow', 'Sale & rental history', () => `https://www.zillow.com/homes/${enc(D.fullAddr).replace(/%20/g, '-')}_rb/`),
+        T('Google Maps', 'Street View: occupancy clues, vehicles, signage', () => 'https://www.google.com/maps/search/?api=1&query=' + enc(D.fullAddr)),
+        T('County assessor & recorder', 'Owner of record & deeds (NETR)', () => 'https://publicrecords.netronline.com/state/' + D.state, ['state', 'us']),
+        T('USPS ZIP lookup', 'Validate & standardize an address', () => 'https://tools.usps.com/zip-code-lookup.htm?byaddress', HOME),
+      ] },
+      { id: 'addrhist', t: 'Address history', need: ['name'], note: 'Look for anything newer than the last known address. Compare "last seen" dates across sources, since people-search sites often lag by months.', items: [
+        T('TruePeopleSearch', 'Addresses with dates, relatives', () => 'https://www.truepeoplesearch.com/results?name=' + enc(D.name) + (D.loc ? '&citystatezip=' + enc(D.loc) : '')),
+        T('FastPeopleSearch', 'Past addresses & associates', () => 'https://www.fastpeoplesearch.com/name/' + slug(D.name) + (D.city && D.state ? '_' + slug(D.city + ' ' + D.state) : '')),
+        T('FamilyTreeNow', 'Address history & relatives', () => `https://www.familytreenow.com/search/genealogy/results?first=${enc(D.first)}&last=${enc(D.last)}` + (D.loc ? '&citystatezip=' + enc(D.loc) : '')),
+        T('ClustrMaps', 'Address history', () => `https://clustrmaps.com/persons/${dash(D.first)}-${dash(D.last)}`),
+        T('CyberBackgroundChecks', 'Past addresses & phones', () => `https://www.cyberbackgroundchecks.com/people/${slug(D.first)}-${slug(D.last)}` + (D.state && D.isUS ? '/' + slug(D.stateFull) + (D.city ? '/' + slug(D.city) : '') : '')),
+        T('Radaris', 'Addresses & property', () => `https://radaris.com/p/${enc(D.first)}/${enc(D.last)}/`),
+        T('VoterRecords', 'Registration address (select states)', () => `https://voterrecords.com/voters/${slug(D.first)}-${slug(D.last)}/1`),
+        T('FEC contributions', 'Dated donor city & employer', () => `https://www.fec.gov/data/receipts/individual-contributions/?contributor_name=${enc(D.last + ', ' + D.first)}` + (D.state && D.isUS ? '&contributor_state=' + D.state : '')),
+      ] },
+      { id: 'relatives', t: 'Relatives & associates', need: ['name'], note: 'Relatives rarely move as often as the subject. Find parents, siblings, exes and roommates (the address-history sites list them), add them as leads and trace them. Relatives\' obituaries list survivors with their cities.', items: [
+        T('Obituaries naming them as survivor', 'Relatives\' obits list family & cities', () => google(`obituary ${qt(D.last)} ${qt(D.first)} ("survived by" OR grandchildren)`)),
+        T('Wedding & family events', 'Spouse and in-law names', () => google(`${nameQ()} (wedding OR engagement OR "baby shower" OR "family reunion")`)),
+        T('Facebook: surname nearby', 'Same last name in their city', () => 'https://www.facebook.com/search/people/?q=' + enc(`${D.last} ${D.city}`), ['city']),
+        T('FamilySearch trees', 'Family relationships (free login)', () => `https://www.familysearch.org/search/tree/results?q.givenName=${enc(D.first)}&q.surname=${enc(D.last)}`),
+      ] },
+      { id: 'work', t: 'Employer & business ties', need: ['name'], note: 'A current employer or business address is often the best place to serve. State licensing boards publish addresses of record.', items: [
+        T('LinkedIn', 'Current title & employer (login)', () => 'https://www.linkedin.com/search/results/people/?keywords=' + enc([D.name, D.employer].filter(Boolean).join(' '))),
+        T('Still at employer?', 'Recent mentions with the employer', () => google(`${nameQ()} ${qt(D.employer)}`) + '&tbs=qdr:y', ['employer']),
+        T('Job-change news', 'Hires, promotions, new roles', () => google(`${nameQ()} (joins OR joined OR hired OR appointed OR promoted OR welcomes)`)),
+        T('OpenCorporates', 'Companies they own or officer', () => 'https://opencorporates.com/officers?q=' + enc(D.name)),
+        T('Professional licenses', 'State board lookups (Google)', () => google(`${nameQ()} license ${D.stateFull ? qt(D.stateFull) + ' ' : ''}(verification OR lookup OR "license number")`)),
+        T('NPI Registry', 'Healthcare providers: practice address (JSON)', () => `https://npiregistry.cms.hhs.gov/api/?version=2.1&first_name=${enc(D.first)}&last_name=${enc(D.last)}` + (D.state && D.isUS ? '&state=' + D.state : '') + '&limit=50'),
+      ] },
+      { id: 'recent', t: 'Online recency', need: ['name|user'], note: 'Recent activity puts the subject in a place at a time: past-year mentions, fresh posts, local news.', items: [
+        T('Google: past year', 'Mentions indexed in the last 12 months', () => google(nameQ()) + '&tbs=qdr:y', ['name']),
+        T('Google: past year + city', 'Recent local mentions', () => google(`${nameQ()} ${qt(D.city)}`) + '&tbs=qdr:y', ['name', 'city']),
+        T('Google News: past year', 'Local news, court & police blotters', () => 'https://news.google.com/search?q=' + enc(nameQ() + ' when:1y'), ['name']),
+        T('X: latest posts', 'Newest from the handle', () => `https://x.com/search?q=${enc('from:' + D.user)}&f=live`, ['user']),
+        T('Reddit: latest comments', 'Newest first', () => `https://www.reddit.com/user/${D.user}/comments/?sort=new`, ['user']),
+        T('Handle: past month', 'Instagram, TikTok, Facebook (Google)', () => google(`${qt(D.user)} (site:instagram.com OR site:tiktok.com OR site:facebook.com)`) + '&tbs=qdr:m', ['user']),
+      ] },
+      { id: 'pro', t: 'Professional skip-trace data', need: HOME, note: 'These subscription platforms hold credit-header, utility and phone data regulated by the GLBA, DPPA and FCRA. Accounts need vetting, and every search needs a permissible purpose.', items: [
+        T('TLOxp (TransUnion)', 'Investigations & collections', () => 'https://tloxp.tlo.com/'),
+        T('LexisNexis Accurint', 'Locate & asset search', () => 'https://www.accurint.com/'),
+        T('IRB Search', 'Investigative data', () => 'https://www.irbsearch.com/'),
+        T('idiCORE', 'Locate data (IDI)', () => 'https://www.ididata.com/'),
+        T('Tracers', 'Investigative data', () => 'https://www.tracers.com/'),
+      ] },
+    ],
+  },
+  {
     id: 'images', title: 'Images', blurb: 'Reverse-search a photo by URL, or drop a local file to read its metadata (camera, timestamps, GPS) and export a scrubbed copy.', pre: renderImageLab,
     groups: [
       { t: 'Reverse image search', need: ['img'], note: 'Finds where else a photo appears online: profile pictures are often reused across accounts.', items: [
@@ -783,9 +878,52 @@ for (const m of MODULES) for (const g of (m.groups || [])) for (const it of g.it
 }
 
 /* ============================================================
+   Skip trace model (stored in the case file as CASE.skip)
+   ============================================================ */
+const SKIP_PURPOSES = [['', 'Permissible purpose…'], ['process', 'Service of process'], ['judgment', 'Judgment / debt recovery'], ['heir', 'Heir, beneficiary or unclaimed funds'], ['witness', 'Locating a witness'], ['asset', 'Repossession / lienholder recovery'], ['bail', 'Bail enforcement'], ['fraud', 'Fraud or identity investigation'], ['other', 'Other (document it in notes)']];
+const SCREEN = [['', 'not checked'], ['clear', 'clear'], ['hit', 'hit']];
+const WORK = [['', 'open'], ['lead', 'lead found'], ['dead', 'dead end']];
+const SKIP_STEPS = [
+  { k: 'identity', t: 'Confirm identity', d: 'Middle name, age and one past address agree across two independent sources.', tab: 'records', o: [['', 'not started'], ['clear', 'confirmed'], ['hit', 'conflicting']], hit: 'Sources disagree, so these may be two different people. Don\'t act on any lead until the identifiers line up.' },
+  { k: 'deceased', t: 'Deceased check', d: 'SSDI, obituaries, burial records.', g: 'deceased', o: SCREEN, hit: 'Pivot to the estate: find the probate case in the county of death and trace the executor or heirs.' },
+  { k: 'custody', t: 'Custody check', d: 'Federal, state and county inmate locators.', g: 'screen', o: SCREEN, hit: 'Serve or make contact through the facility under its rules, and note the projected release date.' },
+  { k: 'military', t: 'Active-duty status (SCRA)', d: 'Needed before most default judgments.', g: 'screen', o: SCREEN, hit: 'SCRA protections apply: the court needs an affidavit of military service before a default judgment and may appoint counsel or stay the case.' },
+  { k: 'bankruptcy', t: 'Bankruptcy check', d: 'An open case stops collection.', g: 'screen', o: SCREEN, hit: 'The automatic stay (11 U.S.C. 362) bars collection activity. Stop, confirm the case is still open, and route the file to counsel.' },
+  { k: 'address', t: 'Work the last known address', d: 'Current residents, owner, sale history.', g: 'lastaddr', o: WORK },
+  { k: 'history', t: 'Address history', d: 'Anything newer than the last known address.', g: 'addrhist', o: WORK },
+  { k: 'relatives', t: 'Relatives & associates', d: 'The most common route to a current address.', g: 'relatives', o: WORK },
+  { k: 'phone', t: 'Phone numbers', d: 'Line type and current subscriber before calling.', tab: 'phone', o: WORK },
+  { k: 'employer', t: 'Employer & business ties', d: 'Current job, licenses, companies.', g: 'work', o: WORK },
+  { k: 'online', t: 'Online recency', d: 'Recent posts and mentions that place them.', g: 'recent', o: WORK },
+];
+const LEAD_TYPES = [['address', 'Address'], ['relative', 'Relative'], ['associate', 'Associate'], ['phone', 'Phone'], ['email', 'Email'], ['employer', 'Employer'], ['other', 'Other']];
+const LEAD_HINT = { address: '45 Oak Ave, Tacoma, WA 98402', relative: 'Mary Doe, Tacoma WA (name, optional place)', associate: 'Sam Lee, Olympia WA', phone: '(253) 555-0199', email: 'mdoe@example.com', employer: 'Acme Logistics', other: 'Anything worth running down' };
+const LEAD_STATUS = ['new', 'working', 'verified', 'dead end'];
+const USPS_FIELDS = [['name', 'Name to trace'], ['addr', 'Last known address'], ['capacity', 'Your capacity', 'Process server, attorney, party pro se…'], ['statute', 'Statute or rule authorizing you to serve', 'Process servers only'], ['parties', 'All known parties to the litigation', 'Acme Corp v. Jane Doe'], ['court', 'Court where the case is or will be heard', 'King County Superior Court'], ['docket', 'Docket / case number', 'If one has been issued'], ['serveAs', 'Capacity to be served', 'Defendant, witness…'], ['signer', 'Your name, address & phone', 'Printed under the signature line']];
+const SKIP_RULES = [
+  ['Permissible purpose', 'Credit-header, utility and DMV-sourced data may only be used for the purposes listed in the GLBA and DPPA. Record yours for every file.'],
+  ['Third-party contacts', 'Debt collectors may contact relatives, neighbors or employers only to get location information. Identify yourself, never mention the debt, and contact each person once (FDCPA, 15 U.S.C. 1692b).'],
+  ['No pretexting', 'Getting someone\'s bank or phone records by posing as them or under other false pretenses is a federal crime (15 U.S.C. 6821; 18 U.S.C. 1039).'],
+  ['Safety', 'Stop if the subject is in a state address-confidentiality program or protected by a court order, and never give a located address to someone the subject is avoiding.'],
+];
+const optOk = (list, v) => list.some(o => o[0] === v);
+function normSkip(s) {
+  s = s && typeof s === 'object' ? s : {};
+  const str = v => String(v ?? ''), steps = s.steps && typeof s.steps === 'object' ? s.steps : {}, usps = s.usps && typeof s.usps === 'object' ? s.usps : {};
+  return {
+    purpose: optOk(SKIP_PURPOSES, s.purpose) ? s.purpose : '',
+    ref: str(s.ref),
+    steps: Object.fromEntries(SKIP_STEPS.map(x => [x.k, optOk(x.o, steps[x.k]) ? steps[x.k] : ''])),
+    leads: (Array.isArray(s.leads) ? s.leads : []).filter(l => l && l.value).map(l => ({ id: str(l.id || Math.random().toString(36).slice(2)), type: optOk(LEAD_TYPES, l.type) ? l.type : 'other', value: str(l.value), status: LEAD_STATUS.includes(l.status) ? l.status : 'new', note: str(l.note), at: str(l.at || new Date().toISOString()) })),
+    usps: Object.fromEntries(USPS_FIELDS.map(([k]) => [k, str(usps[k])])),
+  };
+}
+
+/* ============================================================
    Rendering: link tools
    ============================================================ */
 let CASE = Object.assign({ pins: [], notes: '' }, store.get('ps.case', {}));
+CASE.skip = normSkip(CASE.skip);
 const saveCase = () => store.set('ps.case', CASE);
 const isPinned = url => CASE.pins.some(p => p.url === url);
 function pin(title, url, source) {
@@ -823,14 +961,15 @@ function openAll(items) {
 }
 function renderGroup(g, m, items = g.items) {
   const avail = items.filter(it => needOk(it.need)).length;
+  const gid = g.id ? 'g-' + g.id : null;
   if (!avail) {
     const need = [...new Set(items.flatMap(it => needMissing(it.need)))].join(', ');
-    const det = h('details', { class: 'group' },
+    const det = h('details', { class: 'group', id: gid },
       h('summary', null, h('h3', { text: g.t }), h('span', { class: 'gc', text: `0/${items.length}` }), h('span', { class: 'need', text: `needs ${need}` })));
     det.addEventListener('toggle', () => { if (det.open && det.children.length === 1) det.append(h('div', { class: 'grid' }, items.map(it => toolCard(it, g.t, m.title)))); }, { once: true });
     return det;
   }
-  return h('section', { class: 'group' },
+  return h('section', { class: 'group', id: gid },
     h('div', { class: 'ghead' },
       h('h3', { text: g.t }), h('span', { class: 'gc', text: `${avail}/${items.length}` }),
       avail > 1 ? h('button', { class: 'btn sm ghost', text: `Open all ${avail}`, onclick: () => openAll(items) }) : null,
@@ -1175,7 +1314,7 @@ function renderOverview() {
     out.push(h('div', { class: 'card' }, h('h3', { text: 'How it works' }), h('div', { class: 'kv', style: 'margin-top:8px' },
       h('dt', { text: '1. Identify' }), h('dd', { text: 'Enter a name, username, email, phone, address, domain or photo URL in the subject panel.' }),
       h('dt', { text: '2. Pivot' }), h('dd', { text: 'This page generates name variants, likely usernames and email guesses. Click a candidate to check it.' }),
-      h('dt', { text: '3. Search' }), h('dd', { text: 'Each tab holds pre-filled links to search engines, social networks, people-search sites, court and business records, and more.' }),
+      h('dt', { text: '3. Search' }), h('dd', { text: 'Each tab holds pre-filled links to search engines, social networks, people-search sites, court and business records, and more. The Skip trace tab turns them into a locate workflow with a checklist and lead tracker.' }),
       h('dt', { text: '4. Verify' }), h('dd', { text: 'Live checks query public APIs directly. The CLI toolkit generates commands for Sherlock, Maigret, holehe, PhoneInfoga and others.' }),
       h('dt', { text: '5. Document' }), h('dd', { text: 'Pin findings, rate confidence, take notes and export a Markdown/JSON report from the Case file.' }))));
     out.push(h('div', { class: 'card' }, h('h3', { text: 'Try a demo subject' }), h('p', { class: 'sub', text: 'Fills the form with a fictional person (555-01xx numbers and example.com are reserved for fiction) to show how the tabs light up.' }),
@@ -1249,6 +1388,151 @@ function renderPermutator() {
   card.append(h('p', { class: 'sub', text: 'Likely addresses from the name. Click one to search for it, or copy the list into holehe, Hunter or Epieos to test.' }),
     h('div', { class: 'row' }, sel, custom, h('span', { style: 'flex:1' }), h('button', { class: 'btn sm', text: 'Copy all', onclick: () => copy(cur.join('\n'), `${cur.length} addresses copied`) })), list);
   return card;
+}
+
+/* ============================================================
+   Skip trace workbench (Skip trace tab)
+   ============================================================ */
+const SKIP_UI = { uspsOpen: false };
+function renderSkipTrace() {
+  const sk = CASE.skip;
+  return [h('div', { class: 'cards2', style: 'margin-bottom:14px' }, skipPurposeCard(sk), skipChecklistCard(sk)), skipLeadsCard(sk), skipUspsCard(sk)];
+}
+function jumpTo(id) {
+  const el = document.getElementById(id); if (!el) return;
+  if (el.tagName === 'DETAILS') el.open = true;
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function skipPurposeCard(sk) {
+  const warn = h('p', { class: 'small', style: 'color:var(--warn);margin-top:8px', text: 'Record a permissible purpose before you start. It is saved with the case and printed in the export.' });
+  const updWarn = () => { warn.style.display = sk.purpose ? 'none' : ''; };
+  const sel = h('select', { class: 'inp', 'aria-label': 'Permissible purpose' }, SKIP_PURPOSES.map(([v, t]) => h('option', { value: v, text: t, selected: sk.purpose === v })));
+  sel.onchange = () => { sk.purpose = sel.value; saveCase(); updWarn(); };
+  const ref = h('input', { class: 'inp', value: sk.ref, placeholder: 'Matter, client or file number', 'aria-label': 'Matter reference' });
+  ref.oninput = () => { sk.ref = ref.value; saveCase(); };
+  updWarn();
+  return h('div', { class: 'card' }, h('h3', { text: 'Purpose & ground rules' }),
+    h('p', { class: 'sub', text: 'Skip tracing is legitimate when it serves a documented legal or business purpose. Write that purpose down first.' }),
+    h('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px' }, sel, ref), warn,
+    h('dl', { class: 'kv small', style: 'margin-top:12px' }, SKIP_RULES.flatMap(([k, v]) => [h('dt', { text: k }), h('dd', { class: 'muted', text: v })])));
+}
+function skipChecklistCard(sk) {
+  const bar = h('i'), count = h('span', { class: 'small muted' }), alerts = h('div');
+  const upd = () => {
+    const n = SKIP_STEPS.filter(s => sk.steps[s.k]).length;
+    bar.style.width = `${Math.round(100 * n / SKIP_STEPS.length)}%`;
+    count.textContent = `${n}/${SKIP_STEPS.length} worked`;
+    alerts.textContent = '';
+    for (const s of SKIP_STEPS) if (sk.steps[s.k] === 'hit' && s.hit) alerts.append(h('div', { class: 'alert' }, h('b', { text: s.t + ': ' }), s.hit));
+  };
+  const rows = SKIP_STEPS.map((s, i) => {
+    const row = h('div', { class: 'step' + (sk.steps[s.k] ? ' s-' + sk.steps[s.k] : '') });
+    const sel = h('select', { 'aria-label': s.t + ' status' }, s.o.map(([v, t]) => h('option', { value: v, text: t, selected: sk.steps[s.k] === v })));
+    sel.onchange = () => { sk.steps[s.k] = sel.value; saveCase(); row.className = 'step' + (sel.value ? ' s-' + sel.value : ''); upd(); };
+    const jump = s.tab
+      ? h('a', { href: '#', text: `${MODULES.find(m => m.id === s.tab).title} tab →`, onclick: e => { e.preventDefault(); go(s.tab); } })
+      : h('a', { href: '#g-' + s.g, text: 'tools ↓', onclick: e => { e.preventDefault(); jumpTo('g-' + s.g); } });
+    row.append(h('span', { class: 'sn', text: String(i + 1) }), h('div', null, h('b', { text: s.t }), jump, h('span', { class: 'sd', text: s.d })), sel);
+    return row;
+  });
+  upd();
+  return h('div', { class: 'card' }, h('div', { class: 'row' }, h('h3', { text: 'Locate checklist', style: 'margin:0' }), h('span', { style: 'flex:1' }), count),
+    h('div', { class: 'progress', style: 'margin:8px 0 2px' }, bar), alerts, h('div', { class: 'steps' }, rows));
+}
+// Search links for a lead. "Name, place" and "street, city state zip" are split at the first comma.
+function leadLinks(l) {
+  const v = l.value.trim(); if (!v) return [];
+  const i = v.indexOf(','), head = i > 0 ? v.slice(0, i).trim() : v, tail = i > 0 ? v.slice(i + 1).trim() : '';
+  switch (l.type) {
+    case 'address': return [['residents', `https://www.truepeoplesearch.com/resultaddress?streetaddress=${enc(head)}&citystatezip=${enc(tail || D.loc || D.zip)}`], ['map', 'https://www.google.com/maps/search/?api=1&query=' + enc(v)]];
+    case 'relative': case 'associate': return [['people', 'https://www.truepeoplesearch.com/results?name=' + enc(head) + (tail ? '&citystatezip=' + enc(tail) : '')], ['facebook', 'https://www.facebook.com/search/people/?q=' + enc(head)], ['obit', google(`${qt(head)} obituary ${tail}`.trim())]];
+    case 'phone': { const p = parsePhone(v, D.country); return p && p.nanp ? [['reverse', 'https://www.truepeoplesearch.com/resultphone?phoneno=' + enc(p.paren)], ['search', google(`${qt(p.dash)} OR ${qt(p.paren)}`)]] : [['search', google(qt(v))]]; }
+    case 'email': return [['search', google(qt(v))], ['reverse', 'https://thatsthem.com/email/' + enc(v)]];
+    case 'employer': return [['linkedin', 'https://www.linkedin.com/search/results/people/?keywords=' + enc([D.name, v].filter(Boolean).join(' '))], ['search', google(`${D.has.name ? nameQ() + ' ' : ''}${qt(v)}`)]];
+    default: return [['search', google(qt(v))]];
+  }
+}
+function skipLeadsCard(sk) {
+  const type = h('select', { class: 'inp', style: 'width:auto', 'aria-label': 'Lead type' }, LEAD_TYPES.map(([v, t]) => h('option', { value: v, text: t })));
+  const val = h('input', { class: 'inp', style: 'flex:1;width:auto;min-width:200px', placeholder: LEAD_HINT.address, 'aria-label': 'New lead' });
+  type.onchange = () => { val.placeholder = LEAD_HINT[type.value]; };
+  const wrap = h('div', { style: 'overflow-x:auto;margin-top:10px' });
+  const draw = () => {
+    wrap.textContent = '';
+    if (!sk.leads.length) { wrap.append(h('div', { class: 'empty', text: 'No leads yet. Add past addresses, relatives, associates, phones and employers as you find them; each one gets one-click searches.' })); return; }
+    const tb = h('tbody');
+    for (const l of sk.leads) tb.append(leadRow(sk, l, draw));
+    wrap.append(h('table', { class: 'pins' }, h('thead', null, h('tr', null, ['Type', 'Lead', 'Search', 'Status', 'Note', ''].map(t => h('th', { text: t })))), tb));
+  };
+  const add = () => {
+    const v = val.value.trim(); if (!v) { val.focus(); return; }
+    sk.leads.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), type: type.value, value: v, status: 'new', note: '', at: new Date().toISOString() });
+    saveCase(); val.value = ''; draw(); val.focus();
+  };
+  val.onkeydown = e => { if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); add(); } };
+  draw();
+  return h('div', { class: 'card' }, h('h3', { text: 'Lead tracker' }),
+    h('p', { class: 'sub', text: 'Every address, relative, associate, number and employer worth chasing, with its status. Leads are saved in the case file and included in exports.' }),
+    h('div', { class: 'row' }, type, val, h('button', { class: 'btn sm primary', text: 'Add lead', onclick: add })), wrap);
+}
+function leadRow(sk, l, redraw) {
+  const links = h('td', { class: 'small', style: 'white-space:nowrap' });
+  const drawLinks = () => {
+    links.textContent = '';
+    leadLinks(l).forEach(([t, u], i) => { const s = safeUrl(u); if (s) links.append(i ? ' · ' : '', h('a', { href: s, target: '_blank', rel: 'noopener noreferrer', text: t + ' ↗' })); });
+  };
+  const type = h('select', { 'aria-label': 'Lead type' }, LEAD_TYPES.map(([v, t]) => h('option', { value: v, text: t, selected: l.type === v })));
+  type.onchange = () => { l.type = type.value; saveCase(); drawLinks(); };
+  const val = h('input', { value: l.value, 'aria-label': 'Lead' }); val.oninput = () => { l.value = val.value; saveCase(); drawLinks(); };
+  const st = h('select', { 'aria-label': 'Lead status' }, LEAD_STATUS.map(v => h('option', { value: v, text: v, selected: l.status === v })));
+  st.onchange = () => { l.status = st.value; saveCase(); };
+  const note = h('input', { value: l.note, placeholder: 'Relation, source, result…', 'aria-label': 'Lead note' }); note.oninput = () => { l.note = note.value; saveCase(); };
+  drawLinks();
+  return h('tr', null, h('td', { style: 'width:118px' }, type), h('td', { style: 'min-width:200px' }, val), links, h('td', { style: 'width:112px' }, st), h('td', { style: 'min-width:160px' }, note),
+    h('td', { style: 'width:30px' }, h('button', { class: 'x', title: 'Remove', 'aria-label': 'Remove lead', text: '×', onclick: () => { sk.leads = sk.leads.filter(x => x !== l); saveCase(); redraw(); } })));
+}
+function uspsLetter(get) {
+  const f = k => get(k) || '______________________________';
+  return [
+    'REQUEST FOR CHANGE OF ADDRESS OR BOXHOLDER INFORMATION NEEDED FOR SERVICE OF LEGAL PROCESS', '',
+    'To: Postmaster', `Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, '',
+    'Please furnish the new address or the name and street address (if a boxholder) for the following:', '',
+    `Name: ${f('name')}`, `Address: ${f('addr')}`, '',
+    'The following information is provided under USPS regulations (39 CFR part 265) on disclosure of change-of-address and boxholder information for service of legal process:', '',
+    `1. Capacity of requester: ${f('capacity')}`,
+    `2. Statute or regulation that empowers me to serve process (not required for an attorney or a party acting pro se, except a corporation acting pro se): ${get('statute') || 'N/A'}`,
+    `3. Names of all known parties to the litigation: ${f('parties')}`,
+    `4. Court in which the case has been or will be heard: ${f('court')}`,
+    `5. Docket or other identifying number, if one has been issued: ${get('docket') || 'Not yet issued'}`,
+    `6. Capacity in which this individual is to be served: ${f('serveAs')}`, '',
+    'WARNING: Submitting false information to obtain and use change-of-address or boxholder information for any purpose other than service of legal process in connection with actual or prospective litigation could result in criminal penalties, including fines and imprisonment (18 U.S.C. 1001).', '',
+    'I certify that the above information is true and that the address information is needed and will be used solely for service of legal process in connection with actual or prospective litigation.', '',
+    '______________________________', 'Signature', '', ...(get('signer') ? get('signer').split(/\s*;\s*|\n/) : ['Printed name: ______________________________', 'Address: ______________________________']), '',
+    'FOR POST OFFICE USE ONLY',
+    '[ ] No change of address order on file.', '[ ] Moved, left no forwarding address.', '[ ] No such address.',
+    'New address, or boxholder name and street address: ______________________________', '', 'Postmark:',
+  ].join('\n');
+}
+function skipUspsCard(sk) {
+  const u = sk.usps;
+  const dflt = k => k === 'name' ? D.nameM : k === 'addr' ? D.fullAddr : '';
+  const get = k => (u[k] || '').trim() || dflt(k);
+  const out = h('pre', { class: 'code', style: 'white-space:pre-wrap;margin-top:10px' });
+  const upd = () => { out.textContent = uspsLetter(get); };
+  const fields = USPS_FIELDS.map(([k, label, ph]) => {
+    const e = h('input', { class: 'inp', value: u[k] || '', placeholder: dflt(k) ? `${dflt(k)} (from subject)` : (ph || ''), 'aria-label': label });
+    e.oninput = () => { u[k] = e.value; saveCase(); upd(); };
+    return h('div', { class: 'fld' }, h('label', { text: label }), e);
+  });
+  upd();
+  return h('details', { class: 'card', open: SKIP_UI.uspsOpen, ontoggle: e => { SKIP_UI.uspsOpen = e.target.open; } },
+    h('summary', null, 'USPS forwarding-address request (service of process, US)'),
+    h('p', { class: 'sub', text: 'Process servers, attorneys and parties acting pro se can ask the postmaster serving the last known address for change-of-address or boxholder information, in this standard format and at no charge. Use it only to serve legal process in actual or prospective litigation.' }),
+    h('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:9px 8px' }, fields),
+    h('div', { class: 'row', style: 'margin-top:10px' }, h('span', { class: 'small faint', text: 'Separate lines of your signature block with semicolons.' }), h('span', { style: 'flex:1' }),
+      h('button', { class: 'btn sm', text: 'Copy', onclick: () => copy(out.textContent, 'Request copied') }),
+      h('button', { class: 'btn sm', text: 'Download .txt', onclick: () => download(`usps_request_${slug(get('name')) || 'subject'}.txt`, out.textContent + '\n') })),
+    out);
 }
 
 /* ============================================================
@@ -1428,7 +1712,7 @@ function renderCase() {
       h('button', { class: 'btn', text: 'Export Markdown', onclick: () => download(`case_${slug(D.name || D.user || 'subject') || 'subject'}.md`, caseMarkdown(), 'text/markdown') }),
       h('button', { class: 'btn', text: 'Export JSON', onclick: () => download(`case_${slug(D.name || D.user || 'subject') || 'subject'}.json`, JSON.stringify({ app: 'PeopleScope', exported: new Date().toISOString(), subject: RAW, ...CASE }, null, 2), 'application/json') }),
       h('button', { class: 'btn', text: 'Import', onclick: importCase }),
-      h('button', { class: 'btn ghost', text: 'Clear case', onclick: () => { if (confirm('Delete all pinned findings and notes?')) { CASE = { pins: [], notes: '' }; saveCase(); updateTabCounts(); render(); } } })))];
+      h('button', { class: 'btn ghost', text: 'Clear case', onclick: () => { if (confirm('Delete all pinned findings, notes and skip-trace work?')) { CASE = { pins: [], notes: '', skip: normSkip() }; saveCase(); updateTabCounts(); render(); } } })))];
   const card = h('div', { class: 'card' }, h('h3', { text: `Findings (${CASE.pins.length})` }));
   if (!CASE.pins.length) card.append(h('div', { class: 'empty', style: 'margin-top:8px', text: 'Nothing pinned yet. Use the + button on any tool, or "pin to case" on a live-check hit.' }));
   else {
@@ -1457,6 +1741,14 @@ function caseMarkdown() {
   L.push('', '## Findings', '');
   if (!CASE.pins.length) L.push('_None pinned._');
   else { L.push('| # | Source | Confidence | Note | Captured |', '|---|---|---|---|---|'); CASE.pins.forEach((p, i) => L.push(`| ${i + 1} | [${md(p.title)}](${p.url}) | ${p.conf} | ${md(p.note)} | ${p.at.slice(0, 16).replace('T', ' ')} |`)); }
+  const sk = CASE.skip, leads = sk.leads.filter(l => l.value.trim());
+  if (sk.purpose || sk.ref || SKIP_STEPS.some(s => sk.steps[s.k]) || leads.length) {
+    L.push('', '## Skip trace', '');
+    if (sk.purpose) L.push(`- **Permissible purpose:** ${SKIP_PURPOSES.find(p => p[0] === sk.purpose)[1]}`);
+    if (sk.ref) L.push(`- **Matter / reference:** ${md(sk.ref)}`);
+    L.push('', '| Step | Status |', '|---|---|', ...SKIP_STEPS.map(s => `| ${s.t} | ${s.o.find(o => o[0] === sk.steps[s.k])[1]} |`));
+    if (leads.length) L.push('', '| Type | Lead | Status | Note |', '|---|---|---|---|', ...leads.map(l => `| ${LEAD_TYPES.find(t => t[0] === l.type)[1]} | ${md(l.value)} | ${l.status} | ${md(l.note)} |`));
+  }
   const live = Object.entries(LIVE).flatMap(([k, s]) => s.rows.filter(r => r.state === 'found').map(r => `- **${r.n}** (${LIVE_DEFS[k].title}): ${(r.fields || []).map(([a, b]) => `${a}: ${Array.isArray(b) ? b.join(', ') : b}`).join('; ')}${r.list ? r.list.map(x => ` ${x.t}`).join(';') : ''}`));
   if (live.length) L.push('', '## Live-check hits (this session)', '', ...live);
   if (CASE.notes) L.push('', '## Notes', '', CASE.notes);
@@ -1468,7 +1760,7 @@ function importCase() {
     try {
       const j = JSON.parse(await i.files[0].text());
       if (!Array.isArray(j.pins)) throw new Error('bad file');
-      CASE = { pins: j.pins.filter(p => p && safeUrl(p.url)).map(p => ({ id: String(p.id || Math.random()), title: String(p.title || p.url), url: p.url, source: String(p.source || ''), at: String(p.at || new Date().toISOString()), conf: String(p.conf || 'unverified'), note: String(p.note || '') })), notes: String(j.notes || '') };
+      CASE = { pins: j.pins.filter(p => p && safeUrl(p.url)).map(p => ({ id: String(p.id || Math.random()), title: String(p.title || p.url), url: p.url, source: String(p.source || ''), at: String(p.at || new Date().toISOString()), conf: String(p.conf || 'unverified'), note: String(p.note || '') })), notes: String(j.notes || ''), skip: normSkip(j.skip) };
       if (j.subject && typeof j.subject === 'object' && confirm('Also load the subject from this file?')) { RAW = Object.fromEntries(FIELD_KEYS.map(k => [k, String(j.subject[k] || '')])); RAW.country = RAW.country || 'US'; fillForm(); onSubjectChange(); }
       saveCase(); updateTabCounts(); render(); toast('Case imported');
     } catch (e) { alert('Could not read that file as a PeopleScope case export.'); }
