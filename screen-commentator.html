@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Screen Commentator</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --panel2: #1e222b; --line: #2a2f3a;
+    --text: #e6e8ee; --muted: #8b93a5; --accent: #5b9dff; --good: #3ecf8e;
+    --bad: #ff5d5d; --warn: #f5b942;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+    border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+  header h1 { font-size: 17px; margin: 0 8px 0 0; }
+  .status { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+  .dot.live { background: var(--bad); box-shadow: 0 0 8px var(--bad); }
+  .dot.busy { background: var(--warn); }
+  main { display: grid; grid-template-columns: minmax(340px, 440px) 1fr; gap: 16px; padding: 16px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 14px; margin-bottom: 16px; }
+  section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--muted); margin: 0 0 10px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 4px; }
+  input, textarea, select { width: 100%; background: var(--panel2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; font: inherit; }
+  textarea { resize: vertical; min-height: 90px; }
+  input[type=checkbox] { width: auto; margin: 0 6px 0 0; vertical-align: middle; }
+  input[type=range] { padding: 0; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row > * { flex: 1; }
+  .row > .shrink { flex: 0 0 auto; }
+  .check { display: flex; align-items: center; color: var(--text); font-size: 13px; margin: 8px 0; }
+  button { background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 7px 12px; font: inherit; cursor: pointer; white-space: nowrap; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.danger { background: var(--bad); border-color: var(--bad); color: #fff; font-weight: 600; }
+  button.small { padding: 3px 8px; font-size: 12px; }
+  button:disabled { opacity: .5; cursor: default; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .event { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
+    padding: 10px; margin-bottom: 10px; }
+  .event.off { opacity: .55; }
+  .event .top { display: flex; gap: 8px; align-items: center; }
+  .event .top input[type=text] { font-weight: 600; }
+  .event .fired { font-size: 11px; color: var(--muted); margin-left: auto; white-space: nowrap; }
+  .event.flash { border-color: var(--accent); }
+  .stage { position: relative; background: #000; border-radius: 10px; overflow: hidden;
+    aspect-ratio: 16/9; border: 1px solid var(--line); }
+  .stage video { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .stage .empty { position: absolute; inset: 0; display: grid; place-items: center;
+    color: var(--muted); text-align: center; padding: 20px; }
+  .caption { position: absolute; left: 0; right: 0; bottom: 0; padding: 14px 18px;
+    background: linear-gradient(transparent, rgba(0,0,0,.85) 35%); font-size: 19px;
+    font-weight: 600; text-shadow: 0 1px 3px #000; min-height: 20px; }
+  .meter { height: 6px; background: var(--panel2); border-radius: 3px; overflow: hidden; margin-top: 8px; }
+  .meter > div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  .log { max-height: 420px; overflow-y: auto; }
+  .entry { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .entry img { width: 110px; border-radius: 4px; flex: 0 0 auto; align-self: flex-start; }
+  .entry .meta { font-size: 11px; color: var(--muted); }
+  .entry.err .text { color: var(--bad); }
+  .kbd { font-family: ui-monospace, monospace; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🎙️ Screen Commentator</h1>
+  <button id="shareBtn" class="primary">Start screen share</button>
+  <button id="nowBtn" disabled>Commentate now</button>
+  <button id="stopVoiceBtn">Stop talking</button>
+  <span class="status"><span id="dot" class="dot"></span><span id="statusText">Idle</span></span>
+</header>
+
+<main>
+  <div>
+    <section>
+      <h2>Gemini</h2>
+      <label for="apiKey">API key</label>
+      <div class="row">
+        <input id="apiKey" type="password" placeholder="AIza…" autocomplete="off">
+        <button id="toggleKey" class="shrink small">Show</button>
+      </div>
+      <div class="check"><input id="rememberKey" type="checkbox">Remember key in this browser</div>
+      <label for="model">Model</label>
+      <div class="row">
+        <input id="model" list="modelList" value="gemini-2.5-flash">
+        <button id="loadModels" class="shrink small">Load list</button>
+      </div>
+      <datalist id="modelList"></datalist>
+      <div class="check"><input id="noThinking" type="checkbox" checked>Disable thinking (faster replies)</div>
+      <label for="systemPrompt">System prompt</label>
+      <textarea id="systemPrompt" rows="6"></textarea>
+      <div class="row">
+        <div>
+          <label for="maxWords">Max words per comment</label>
+          <input id="maxWords" type="number" min="5" max="300" value="35">
+        </div>
+        <div>
+          <label for="memory">Remember last N comments</label>
+          <input id="memory" type="number" min="0" max="30" value="6">
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Events</h2>
+      <div id="events"></div>
+      <div class="row">
+        <select id="newType">
+          <option value="change">Screen changes</option>
+          <option value="settle">Screen settles (stops changing)</option>
+          <option value="interval">Every N seconds</option>
+          <option value="hotkey">Hotkey pressed</option>
+          <option value="start">Screen share starts</option>
+          <option value="manual">Manual button only</option>
+        </select>
+        <button id="addEvent" class="shrink">+ Add event</button>
+      </div>
+      <label for="busyMode">When an event fires while the AI is still talking</label>
+      <select id="busyMode">
+        <option value="skip">Skip the new event</option>
+        <option value="queue">Queue it (keeps only the latest)</option>
+        <option value="interrupt">Interrupt and react to the new one</option>
+      </select>
+      <div class="hint">Hotkeys only work while this tab is focused (browsers can't read keys from other apps).</div>
+    </section>
+
+    <section>
+      <h2>Voice &amp; capture</h2>
+      <div class="check"><input id="speak" type="checkbox" checked>Speak commentary out loud</div>
+      <label for="voice">Voice</label>
+      <select id="voice"></select>
+      <div class="row">
+        <div><label for="rate">Speed <span id="rateVal"></span></label>
+          <input id="rate" type="range" min="0.5" max="2" step="0.1" value="1.1"></div>
+        <div><label for="pitch">Pitch <span id="pitchVal"></span></label>
+          <input id="pitch" type="range" min="0.5" max="1.5" step="0.1" value="1"></div>
+      </div>
+      <div class="row">
+        <div><label for="maxWidth">Frame width sent (px)</label>
+          <input id="maxWidth" type="number" min="320" max="3840" step="16" value="1280"></div>
+        <div><label for="quality">JPEG quality</label>
+          <input id="quality" type="number" min="0.3" max="1" step="0.05" value="0.7"></div>
+      </div>
+    </section>
+  </div>
+
+  <div>
+    <section>
+      <div class="stage">
+        <video id="video" autoplay muted playsinline></video>
+        <div id="empty" class="empty">Click <b>&nbsp;Start screen share&nbsp;</b> and pick a screen, window or tab.</div>
+        <div id="caption" class="caption"></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <span class="hint" style="margin:0">Screen motion</span>
+        <span id="motionVal" class="hint shrink" style="margin:0">0%</span>
+      </div>
+      <div class="meter"><div id="motionBar"></div></div>
+    </section>
+
+    <section>
+      <div class="row" style="margin-bottom:6px">
+        <h2 style="margin:0">Commentary log</h2>
+        <button id="clearLog" class="shrink small">Clear</button>
+      </div>
+      <div id="log" class="log"></div>
+    </section>
+  </div>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const API = 'https://generativelanguage.googleapis.com/v1beta';
+  const STORE = 'screenCommentator.v1';
+
+  const DEFAULT_PROMPT =
+    "You are a hyped-up live sports-style commentator watching the user's screen in real time. " +
+    "React to what is happening right now with energy and humor. Speak in short, punchy, spoken-style sentences " +
+    "(your words are read aloud by text-to-speech, so no markdown, lists, emojis or stage directions). " +
+    "Never describe the whole screen — call out the interesting bit.";
+
+  let uid = 0;
+  const mkEvent = (type, over = {}) => ({
+    id: ++uid, type, enabled: true,
+    name: { change: 'Big change', settle: 'Screen settled', interval: 'Check-in', hotkey: 'Hotkey',
+            start: 'Stream start', manual: 'Manual' }[type],
+    value: { change: 12, settle: 3, interval: 30, hotkey: 'C', start: 0, manual: 0 }[type],
+    cooldown: type === 'change' ? 8 : 0,
+    prompt: {
+      change: 'Something just changed on screen. React to what changed.',
+      settle: 'The screen just stopped moving. Comment on where things landed.',
+      interval: 'Give a quick check-in on what is going on.',
+      hotkey: 'The viewer just asked for your take on this moment.',
+      start: 'The stream just started. Introduce what you see.',
+      manual: 'Commentate on this moment.'
+    }[type],
+    ...over
+  });
+
+  // ---------- state ----------
+  let events = [
+    mkEvent('start'),
+    mkEvent('change'),
+    mkEvent('hotkey'),
+    mkEvent('interval', { enabled: false }),
+  ];
+  const lastFired = {};         // event id -> timestamp
+  const timers = {};            // interval event id -> timer
+  let stream = null;
+  let history = [];             // recent comment strings
+  let busy = false;             // request in flight or speaking
+  let pending = null;           // queued event (queue mode)
+  let abortCtl = null;
+  let generation = 0;           // bumps on interrupt so stale speech callbacks are ignored
+  let recordingFor = null;      // event id currently recording a hotkey
+
+  // ---------- persistence ----------
+  const fields = ['model', 'systemPrompt', 'maxWords', 'memory', 'busyMode', 'rate', 'pitch', 'maxWidth', 'quality'];
+  const checks = ['noThinking', 'speak', 'rememberKey'];
+
+  function save() {
+    const data = { events, voice: $('voice').value };
+    fields.forEach(f => data[f] = $(f).value);
+    checks.forEach(c => data[c] = $(c).checked);
+    if ($('rememberKey').checked) data.apiKey = $('apiKey').value;
+    try { localStorage.setItem(STORE, JSON.stringify(data)); } catch {}
+  }
+
+  function load() {
+    let data = null;
+    try { data = JSON.parse(localStorage.getItem(STORE)); } catch {}
+    $('systemPrompt').value = DEFAULT_PROMPT;
+    if (!data) return;
+    fields.forEach(f => { if (data[f] != null) $(f).value = data[f]; });
+    checks.forEach(c => { if (data[c] != null) $(c).checked = data[c]; });
+    if (data.apiKey) $('apiKey').value = data.apiKey;
+    if (Array.isArray(data.events)) {
+      events = data.events;
+      uid = Math.max(0, ...events.map(e => e.id));
+    }
+    savedVoice = data.voice;
+  }
+
+  // ---------- UI: events ----------
+  const TYPE_LABEL = {
+    change: ['Sensitivity: fires when this % of the screen changes', '%'],
+    settle: ['Fires after the screen has been still for', 'sec'],
+    interval: ['Fires every', 'sec'],
+    hotkey: ['Key combo (click Record, then press keys)', ''],
+    start: null, manual: null
+  };
+
+  function renderEvents() {
+    const box = $('events');
+    box.innerHTML = '';
+    for (const ev of events) {
+      const el = document.createElement('div');
+      el.className = 'event' + (ev.enabled ? '' : ' off');
+      el.dataset.id = ev.id;
+      const lab = TYPE_LABEL[ev.type];
+      el.innerHTML = `
+        <div class="top">
+          <input type="checkbox" data-k="enabled" ${ev.enabled ? 'checked' : ''} title="Enabled">
+          <input type="text" data-k="name">
+          <span class="fired" data-fired></span>
+          <button class="small" data-act="fire" title="Fire this event now">▶</button>
+          <button class="small" data-act="del" title="Delete">✕</button>
+        </div>
+        ${lab ? `<label>${lab[0]}${lab[1] ? ` (${lab[1]})` : ''}</label>
+        <div class="row">
+          <input ${ev.type === 'hotkey' ? 'type="text" class="kbd" readonly' : 'type="number" min="1"'} data-k="value">
+          ${ev.type === 'hotkey' ? '<button class="small shrink" data-act="rec">Record</button>' : ''}
+          ${ev.type === 'change' ? '<span class="hint shrink" style="margin:0">cooldown s</span><input type="number" min="0" data-k="cooldown" style="max-width:70px">' : ''}
+        </div>` : `<div class="hint">${ev.type === 'start' ? 'Fires once when screen sharing begins.' : 'Only fires from its ▶ button.'}</div>`}
+        <label>Extra instruction sent with this event</label>
+        <textarea data-k="prompt" rows="2" style="min-height:48px"></textarea>`;
+      el.querySelectorAll('[data-k]').forEach(inp => {
+        const k = inp.dataset.k;
+        if (inp.type === 'checkbox') inp.checked = ev[k]; else inp.value = ev[k];
+        inp.addEventListener(inp.type === 'checkbox' ? 'change' : 'input', () => {
+          ev[k] = inp.type === 'checkbox' ? inp.checked : (inp.type === 'number' ? +inp.value : inp.value);
+          if (k === 'enabled') el.classList.toggle('off', !ev.enabled);
+          if (k === 'enabled' || (k === 'value' && ev.type === 'interval')) syncIntervals();
+          save();
+        });
+      });
+      el.querySelector('[data-act=del]').onclick = () => {
+        events = events.filter(e => e !== ev); syncIntervals(); renderEvents(); save();
+      };
+      el.querySelector('[data-act=fire]').onclick = () => trigger(ev, true);
+      const rec = el.querySelector('[data-act=rec]');
+      if (rec) rec.onclick = () => {
+        recordingFor = ev.id; rec.textContent = 'Press keys…'; rec.blur();
+      };
+      box.appendChild(el);
+    }
+    updateFiredLabels();
+  }
+
+  function updateFiredLabels() {
+    document.querySelectorAll('.event').forEach(el => {
+      const t = lastFired[el.dataset.id];
+      el.querySelector('[data-fired]').textContent = t ? `fired ${Math.round((Date.now() - t) / 1000)}s ago` : '';
+    });
+  }
+  setInterval(updateFiredLabels, 1000);
+
+  function flashEvent(ev) {
+    const el = document.querySelector(`.event[data-id="${ev.id}"]`);
+    if (!el) return;
+    el.classList.add('flash');
+    setTimeout(() => el.classList.remove('flash'), 700);
+  }
+
+  // ---------- hotkeys ----------
+  function comboFrom(e) {
+    const parts = [];
+    if (e.ctrlKey) parts.push('Ctrl');
+    if (e.altKey) parts.push('Alt');
+    if (e.shiftKey) parts.push('Shift');
+    if (e.metaKey) parts.push('Meta');
+    let k = e.key;
+    if (['Control', 'Alt', 'Shift', 'Meta'].includes(k)) return null;
+    if (k === ' ') k = 'Space';
+    else if (k.length === 1) k = k.toUpperCase();
+    parts.push(k);
+    return parts.join('+');
+  }
+
+  document.addEventListener('keydown', (e) => {
+    const combo = comboFrom(e);
+    if (!combo) return;
+    if (recordingFor != null) {
+      e.preventDefault();
+      const ev = events.find(x => x.id === recordingFor);
+      recordingFor = null;
+      if (ev && combo !== 'Escape') ev.value = combo;
+      renderEvents(); save();
+      return;
+    }
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    for (const ev of events) {
+      if (ev.enabled && ev.type === 'hotkey' && String(ev.value).toLowerCase() === combo.toLowerCase()) {
+        e.preventDefault();
+        trigger(ev);
+      }
+    }
+  });
+
+  // ---------- capture ----------
+  const video = $('video');
+  const frameCanvas = document.createElement('canvas');
+  const diffCanvas = document.createElement('canvas');
+  diffCanvas.width = 96; diffCanvas.height = 54;
+  const diffCtx = diffCanvas.getContext('2d', { willReadFrequently: true });
+  let prevPixels = null;
+  let lastMotionAt = 0;
+
+  async function startShare() {
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 10 }, audio: false });
+    } catch (err) {
+      setStatus('Screen share cancelled');
+      return;
+    }
+    video.srcObject = stream;
+    await video.play().catch(() => {});
+    $('empty').style.display = 'none';
+    $('shareBtn').textContent = 'Stop screen share';
+    $('shareBtn').className = 'danger';
+    $('nowBtn').disabled = false;
+    stream.getVideoTracks()[0].addEventListener('ended', stopShare);
+    prevPixels = null;
+    setStatus('Live');
+    syncIntervals();
+    // wait until the video is producing real frames before firing "start" events
+    const fireStart = (tries = 0) => {
+      if (!stream) return;
+      if (!video.videoWidth && tries < 25) return setTimeout(() => fireStart(tries + 1), 200);
+      events.filter(e => e.enabled && e.type === 'start').forEach(e => trigger(e));
+    };
+    setTimeout(fireStart, 500);
+  }
+
+  function stopShare() {
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    stream = null;
+    video.srcObject = null;
+    $('empty').style.display = '';
+    $('shareBtn').textContent = 'Start screen share';
+    $('shareBtn').className = 'primary';
+    $('nowBtn').disabled = true;
+    syncIntervals();
+    setStatus('Idle');
+  }
+
+  function grabFrame() {
+    const w = video.videoWidth, h = video.videoHeight;
+    if (!w || !h) return null;
+    const scale = Math.min(1, (+$('maxWidth').value || 1280) / w);
+    frameCanvas.width = Math.round(w * scale);
+    frameCanvas.height = Math.round(h * scale);
+    frameCanvas.getContext('2d').drawImage(video, 0, 0, frameCanvas.width, frameCanvas.height);
+    const q = Math.min(1, Math.max(0.3, +$('quality').value || 0.7));
+    return frameCanvas.toDataURL('image/jpeg', q);
+  }
+
+  // motion detection loop
+  setInterval(() => {
+    if (!stream || !video.videoWidth) return;
+    diffCtx.drawImage(video, 0, 0, diffCanvas.width, diffCanvas.height);
+    const px = diffCtx.getImageData(0, 0, diffCanvas.width, diffCanvas.height).data;
+    const gray = new Uint8Array(px.length / 4);
+    for (let i = 0; i < gray.length; i++) gray[i] = (px[i * 4] * 3 + px[i * 4 + 1] * 6 + px[i * 4 + 2]) / 10;
+    if (prevPixels) {
+      let changed = 0;
+      for (let i = 0; i < gray.length; i++) if (Math.abs(gray[i] - prevPixels[i]) > 18) changed++;
+      const pct = (changed / gray.length) * 100;
+      $('motionBar').style.width = Math.min(100, pct) + '%';
+      $('motionVal').textContent = pct.toFixed(1) + '%';
+      const now = Date.now();
+      if (pct > 1.5) lastMotionAt = now;
+      for (const ev of events) {
+        if (!ev.enabled) continue;
+        if (ev.type === 'change' && pct >= (+ev.value || 1)) {
+          if (now - (lastFired[ev.id] || 0) >= (+ev.cooldown || 0) * 1000) trigger(ev);
+        }
+        // fire once per burst of motion: only if there was motion since this event last fired
+        if (ev.type === 'settle' && lastMotionAt > (lastFired[ev.id] || 0) && now - lastMotionAt >= (+ev.value || 1) * 1000) {
+          trigger(ev);
+        }
+      }
+    }
+    prevPixels = gray;
+  }, 400);
+
+  function syncIntervals() {
+    for (const id in timers) { clearInterval(timers[id]); delete timers[id]; }
+    if (!stream) return;
+    for (const ev of events) {
+      if (ev.enabled && ev.type === 'interval') {
+        timers[ev.id] = setInterval(() => trigger(ev), Math.max(3, +ev.value || 30) * 1000);
+      }
+    }
+  }
+
+  // ---------- trigger / queue ----------
+  function trigger(ev, manual = false) {
+    if (!stream) { if (manual) setStatus('Start screen share first'); return; }
+    lastFired[ev.id] = Date.now();
+    flashEvent(ev);
+    if (busy) {
+      const mode = $('busyMode').value;
+      if (mode === 'skip' && !manual) return;
+      if (mode === 'queue' && !manual) { pending = ev; return; }
+      interrupt();
+    }
+    commentate(ev);
+  }
+
+  function interrupt() {
+    generation++;
+    if (abortCtl) abortCtl.abort();
+    if ('speechSynthesis' in window) speechSynthesis.cancel();
+    busy = false;
+    pending = null;
+  }
+
+  function finish(gen) {
+    if (gen !== generation) return;
+    busy = false;
+    setStatus(stream ? 'Live' : 'Idle');
+    if (pending) { const ev = pending; pending = null; commentate(ev); }
+  }
+
+  // ---------- Gemini ----------
+  async function commentate(ev) {
+    const key = $('apiKey').value.trim();
+    if (!key) { addLog({ ev, text: 'Add your Gemini API key first.', error: true }); return; }
+    const dataUrl = grabFrame();
+    if (!dataUrl) return;
+
+    busy = true;
+    const gen = ++generation;
+    abortCtl = new AbortController();
+    setStatus(`Thinking… (${ev.name})`, 'busy');
+
+    const memN = Math.max(0, +$('memory').value || 0);
+    const recent = memN ? history.slice(-memN) : [];
+    let userText = `EVENT: ${ev.name}\n${ev.prompt || ''}\n\nKeep it under ${+$('maxWords').value || 35} words.`;
+    if (recent.length) userText += `\n\nYour recent comments (don't repeat yourself):\n- ${recent.join('\n- ')}`;
+
+    const body = {
+      system_instruction: { parts: [{ text: $('systemPrompt').value || DEFAULT_PROMPT }] },
+      contents: [{ role: 'user', parts: [
+        { inline_data: { mime_type: 'image/jpeg', data: dataUrl.split(',')[1] } },
+        { text: userText }
+      ] }],
+      generationConfig: { temperature: 1, maxOutputTokens: 1024 }
+    };
+    if ($('noThinking').checked) body.generationConfig.thinkingConfig = { thinkingBudget: 0 };
+
+    const entry = addLog({ ev, text: '…', img: dataUrl });
+    let full = '';
+    const speaker = makeSpeaker(gen);
+
+    try {
+      let res = await callGemini(key, body);
+      if (!res.ok && res.status === 400 && body.generationConfig.thinkingConfig) {
+        // some models can't turn thinking off — retry without it
+        delete body.generationConfig.thinkingConfig;
+        res = await callGemini(key, body);
+      }
+      if (!res.ok) {
+        let msg = `HTTP ${res.status}`;
+        try { msg = (await res.json()).error?.message || msg; } catch {}
+        throw new Error(msg);
+      }
+      await readSSE(res, (chunk) => {
+        if (gen !== generation) return;
+        full += chunk;
+        entry.text.textContent = full;
+        $('caption').textContent = full;
+        speaker.push(chunk);
+      });
+      if (gen !== generation) return;
+      full = full.trim();
+      if (!full) throw new Error('Empty response (possibly blocked by safety filters).');
+      history.push(full);
+      if (history.length > 50) history.shift();
+      setStatus('Talking…', 'busy');
+      speaker.end(() => finish(gen));
+    } catch (err) {
+      if (err.name === 'AbortError' || gen !== generation) return;
+      entry.el.classList.add('err');
+      entry.text.textContent = 'Error: ' + err.message;
+      finish(gen);
+    }
+  }
+
+  function callGemini(key, body) {
+    const model = encodeURIComponent($('model').value.trim().replace(/^models\//, '') || 'gemini-2.5-flash');
+    return fetch(`${API}/models/${model}:streamGenerateContent?alt=sse`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+      body: JSON.stringify(body),
+      signal: abortCtl.signal
+    });
+  }
+
+  async function readSSE(res, onText) {
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, i).trim();
+        buf = buf.slice(i + 1);
+        if (!line.startsWith('data:')) continue;
+        let json;
+        try { json = JSON.parse(line.slice(5)); } catch { continue; }
+        if (json.error) throw new Error(json.error.message);
+        for (const p of json.candidates?.[0]?.content?.parts || []) {
+          if (p.text && !p.thought) onText(p.text);
+        }
+      }
+    }
+  }
+
+  // ---------- speech (speaks sentence-by-sentence as text streams in) ----------
+  function makeSpeaker(gen) {
+    let buf = '';
+    let outstanding = 0;
+    let ended = false, onDone = null;
+    const enabled = $('speak').checked && 'speechSynthesis' in window;
+
+    const check = () => { if (ended && outstanding === 0 && onDone) { const f = onDone; onDone = null; f(); } };
+    const say = (text) => {
+      text = text.replace(/[*_#`>]/g, '').trim();
+      if (!enabled || !text || gen !== generation) return;
+      const u = new SpeechSynthesisUtterance(text);
+      const v = voices.find(v => v.voiceURI === $('voice').value);
+      if (v) u.voice = v;
+      u.rate = +$('rate').value;
+      u.pitch = +$('pitch').value;
+      outstanding++;
+      u.onend = u.onerror = () => { outstanding--; check(); };
+      speechSynthesis.speak(u);
+    };
+    return {
+      push(chunk) {
+        buf += chunk;
+        const re = /[^.!?…]*[.!?…]+["')\]]*\s+/g;
+        let m, last = 0;
+        while ((m = re.exec(buf))) { say(m[0]); last = re.lastIndex; }
+        buf = buf.slice(last);
+      },
+      end(cb) { say(buf); buf = ''; ended = true; onDone = cb; check(); }
+    };
+  }
+
+  let voices = [];
+  let savedVoice = null;
+  function loadVoices() {
+    voices = speechSynthesis.getVoices();
+    const sel = $('voice');
+    const cur = sel.value || savedVoice;
+    sel.innerHTML = '<option value="">Default voice</option>' + voices
+      .map(v => `<option value="${v.voiceURI.replace(/"/g, '&quot;')}">${v.name} (${v.lang})</option>`).join('');
+    if (cur && voices.some(v => v.voiceURI === cur)) sel.value = cur;
+  }
+
+  // ---------- log & status ----------
+  function addLog({ ev, text, img, error }) {
+    const el = document.createElement('div');
+    el.className = 'entry' + (error ? ' err' : '');
+    el.innerHTML = `${img ? `<img src="${img}" alt="">` : ''}<div><div class="meta"></div><div class="text"></div></div>`;
+    el.querySelector('.meta').textContent = `${new Date().toLocaleTimeString()} · ${ev.name}`;
+    const t = el.querySelector('.text');
+    t.textContent = text;
+    $('log').prepend(el);
+    while ($('log').children.length > 60) $('log').lastChild.remove();
+    return { el, text: t };
+  }
+
+  function setStatus(text, kind) {
+    $('statusText').textContent = text;
+    $('dot').className = 'dot ' + (kind || (stream ? 'live' : ''));
+  }
+
+  // ---------- models list ----------
+  async function loadModels() {
+    const key = $('apiKey').value.trim();
+    if (!key) { alert('Enter your API key first.'); return; }
+    $('loadModels').disabled = true;
+    try {
+      const res = await fetch(`${API}/models?pageSize=200`, { headers: { 'x-goog-api-key': key } });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || res.status);
+      const names = (data.models || [])
+        .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
+        .map(m => m.name.replace(/^models\//, ''));
+      $('modelList').innerHTML = names.map(n => `<option value="${n}">`).join('');
+      setStatus(`Loaded ${names.length} models — click the Model box to pick one`);
+    } catch (err) {
+      alert('Could not load models: ' + err.message);
+    } finally {
+      $('loadModels').disabled = false;
+    }
+  }
+
+  // ---------- wire up ----------
+  load();
+  renderEvents();
+  loadVoices();
+  if ('speechSynthesis' in window) speechSynthesis.onvoiceschanged = loadVoices;
+
+  const showVal = () => { $('rateVal').textContent = $('rate').value + '×'; $('pitchVal').textContent = $('pitch').value; };
+  showVal();
+
+  [...fields, ...checks, 'voice', 'apiKey'].forEach(id =>
+    $(id).addEventListener(['rate', 'pitch'].includes(id) ? 'input' : 'change', () => { showVal(); save(); }));
+  $('rememberKey').addEventListener('change', () => { if (!$('rememberKey').checked) save(); });
+
+  $('toggleKey').onclick = () => {
+    const k = $('apiKey');
+    k.type = k.type === 'password' ? 'text' : 'password';
+    $('toggleKey').textContent = k.type === 'password' ? 'Show' : 'Hide';
+  };
+  $('shareBtn').onclick = () => (stream ? stopShare() : startShare());
+  $('nowBtn').onclick = () => trigger({ id: 'now', name: 'Manual', prompt: 'Commentate on this moment.' }, true);
+  $('stopVoiceBtn').onclick = () => { interrupt(); setStatus(stream ? 'Live' : 'Idle'); };
+  $('addEvent').onclick = () => { events.push(mkEvent($('newType').value)); renderEvents(); syncIntervals(); save(); };
+  $('clearLog').onclick = () => { $('log').innerHTML = ''; history = []; $('caption').textContent = ''; };
+  $('loadModels').onclick = loadModels;
+
+  if (!navigator.mediaDevices?.getDisplayMedia) {
+    $('empty').textContent = 'This browser does not support screen capture. Use desktop Chrome, Edge or Firefox.';
+    $('shareBtn').disabled = true;
+  }
+})();
+</script>
+</body>
+</html>
