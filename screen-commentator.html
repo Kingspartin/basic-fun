@@ -91,7 +91,7 @@
       <div class="check"><input id="rememberKey" type="checkbox">Remember key in this browser</div>
       <label for="model">Model</label>
       <div class="row">
-        <input id="model" list="modelList" value="gemini-2.5-flash">
+        <input id="model" list="modelList" value="gemini-3.8-flash">
         <button id="loadModels" class="shrink small">Load list</button>
       </div>
       <datalist id="modelList"></datalist>
@@ -557,18 +557,36 @@
       ] }],
       generationConfig: { temperature: 1, maxOutputTokens: 1024 }
     };
-    if ($('noThinking').checked) body.generationConfig.thinkingConfig = { thinkingBudget: 0 };
+    let useThinkingCfg = $('noThinking').checked;
 
     const entry = addLog({ ev, text: '…', img: dataUrl });
     let full = '';
     const speaker = makeSpeaker(gen);
 
     try {
-      let res = await callGemini(key, body);
-      if (!res.ok && res.status === 400 && body.generationConfig.thinkingConfig) {
-        // some models can't turn thinking off — retry without it
-        delete body.generationConfig.thinkingConfig;
+      let res;
+      for (let attempt = 0; ; attempt++) {
+        const model = currentModel();
+        if (useThinkingCfg) {
+          // Gemini 2.x turns thinking off with a zero budget; newer models use a thinking level
+          body.generationConfig.thinkingConfig = /^gemini-2\./.test(model)
+            ? { thinkingBudget: 0 } : { thinkingLevel: 'low' };
+        } else delete body.generationConfig.thinkingConfig;
         res = await callGemini(key, body);
+        if (res.ok || attempt >= 3) break;
+        let msg = `HTTP ${res.status}`;
+        try { msg = (await res.json()).error?.message || msg; } catch {}
+        // retired model: the error names its replacement, so switch to it and retry
+        const replacement = msg.match(/use (?:models\/)?(gemini-[\w.-]*\w)/i)?.[1];
+        if (replacement && replacement !== model) {
+          $('model').value = replacement;
+          save();
+          addLog({ ev, text: `Switched model from ${model} to ${replacement} (Google retired the old one).` });
+          continue;
+        }
+        // some models reject the thinking setting: retry without it
+        if (res.status === 400 && useThinkingCfg) { useThinkingCfg = false; continue; }
+        throw new Error(msg);
       }
       if (!res.ok) {
         let msg = `HTTP ${res.status}`;
@@ -597,8 +615,10 @@
     }
   }
 
+  const currentModel = () => $('model').value.trim().replace(/^models\//, '') || 'gemini-3.8-flash';
+
   function callGemini(key, body) {
-    const model = encodeURIComponent($('model').value.trim().replace(/^models\//, '') || 'gemini-2.5-flash');
+    const model = encodeURIComponent(currentModel());
     return fetch(`${API}/models/${model}:streamGenerateContent?alt=sse`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
