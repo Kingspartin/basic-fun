@@ -89,6 +89,31 @@ async def test_max_requests_budget():
     assert len(m_email.calls) + len(m_user.calls) <= 2
 
 
+async def test_unlimited_requests_and_depth():
+    # A chain email -> username -> email2 -> ... would be capped by max_requests;
+    # with the cap removed it runs until entities are exhausted (dedup terminates it).
+    def _num(s):
+        return int(s) if s.isdigit() else 0
+
+    async def email_h(e):  # e0@x.com -> username u0
+        return [finding(USERNAME, f"u{_num(e.normalized.split('@')[0][1:])}")]
+
+    async def user_h(e):   # u0 -> email e1@x.com, chaining to a fixed depth
+        n = _num(e.normalized[1:])
+        return [] if n >= 5 else [finding(EMAIL, f"e{n + 1}@x.com")]
+
+    m_email = make_module("m_email", [EMAIL], [USERNAME], email_h, requests_per_second=1000)
+    m_user = make_module("m_user", [USERNAME], [EMAIL], user_h, requests_per_second=1000)
+    # Unlimited via settings; also verify a non-positive call arg maps to unlimited.
+    d = Dispatcher([m_email, m_user], settings=ScanSettings(max_depth=None, max_requests=None))
+    res = await d.scan(Entity(EMAIL, "e0@x.com"), requester_id="r", purpose="t",
+                       max_requests=0)  # 0 => unlimited
+    assert res.stats["max_requests"] is None and res.stats["max_depth"] is None
+    # the chain expanded past what a depth/budget cap would have allowed
+    assert res.stats["requests_made"] > 5
+    assert not res.aborted
+
+
 async def test_seed_suppressed_aborts_before_query():
     ran = []
 

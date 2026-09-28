@@ -65,9 +65,18 @@ react.
   per scan. Normalization folds Gmail dots/tags, `+1` NANP phones, `www.`/scheme on
   domains, etc.
 - **Depth & budget** — `max_depth` hops from the seed; `max_requests` provider calls
-  per scan (cache hits are free and never counted).
-- **Rate limiting** — per-module token bucket sized to the provider's documented
-  limits; one chatty provider can't starve the others.
+  per scan (cache hits are free and never counted). Both are per-scan safety caps and
+  can be **removed**: set either to `None` in `ScanSettings`, or pass a non-positive
+  value to `scan()` (`max_requests=0`). Removing them lifts the *per-scan ceiling
+  only* — the per-module rate limiter and daily quota still govern each provider.
+- **Rate limiting** — per-module token bucket sized to each provider's documented
+  limits; one chatty provider can't starve the others. Raise a module's
+  `requests_per_second`/`burst`/`daily_quota` to match your own plan (set
+  `daily_quota=None` for no daily cap). This is deliberately *not* removed even when
+  the per-scan budget is: hammering a provider past its limits gets your API key or
+  IP banned, and the layer's charter is official APIs used within their terms — so
+  there is no scraping of sites that forbid it and no IP/API-key rotation to evade
+  limits.
 - **Resilience** — exponential backoff with full jitter on 429/5xx, honoring
   `Retry-After`; per-request timeout; a module error/timeout skips one lookup;
   `QuotaExceeded` disables that module for the rest of the scan and logs it. Only a

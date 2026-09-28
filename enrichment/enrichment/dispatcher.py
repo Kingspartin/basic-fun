@@ -41,8 +41,12 @@ log = logging.getLogger("enrichment.dispatcher")
 
 @dataclass
 class ScanSettings:
-    max_depth: int = 2          # hops from the seed
-    max_requests: int = 200     # provider calls per scan (cache hits are free)
+    # Per-scan safety caps. Set either to None (or <= 0) to remove the cap; the
+    # per-module rate limiter and daily quota still govern how fast/how much each
+    # provider is called, so "uncapped" means "no artificial per-scan ceiling",
+    # not "ignore providers' limits".
+    max_depth: int | None = 2          # hops from the seed; None = unlimited
+    max_requests: int | None = 200     # provider calls per scan; None = unlimited (cache hits are free)
     workers: int = 8
     default_timeout: float = 15.0
 
@@ -120,6 +124,11 @@ class Dispatcher:
         s = self.settings
         max_depth = s.max_depth if max_depth is None else max_depth
         max_requests = s.max_requests if max_requests is None else max_requests
+        # A non-positive cap means "no per-scan ceiling" (unlimited).
+        if isinstance(max_requests, int) and max_requests <= 0:
+            max_requests = None
+        if isinstance(max_depth, int) and max_depth < 0:
+            max_depth = None
         started = time.monotonic()
 
         await self.audit.record_scan_start(ScanAudit(
@@ -182,13 +191,14 @@ class Dispatcher:
             return False
         self._seen.add(entity.key)
         await self.storage.persist_entity(self._scan_id, entity, depth, parent)
-        if depth <= self._max_depth:
+        if self._max_depth is None or depth <= self._max_depth:
             self._queue.put_nowait((entity, depth, parent))
         return True
 
     def _reserve_request(self) -> bool:
         # Atomic within the single-threaded event loop (no await between check/incr).
-        if self._requests_made >= self._max_requests:
+        # max_requests is None => no per-scan ceiling; rate limiter + quota still apply.
+        if self._max_requests is not None and self._requests_made >= self._max_requests:
             return False
         self._requests_made += 1
         return True
