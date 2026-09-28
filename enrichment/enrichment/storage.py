@@ -86,7 +86,7 @@ _MULTI = {
     EntityType.URL: "urls", EntityType.ORGANIZATION: "organizations",
     EntityType.ACCOUNT: "accounts", EntityType.BREACH: "breaches",
     EntityType.IMAGE: "images", EntityType.IP_ADDRESS: "ip_addresses",
-    EntityType.PGP_KEY: "pgp_keys",
+    EntityType.PGP_KEY: "pgp_keys", EntityType.GEO_POINT: "geo_points",
 }
 
 

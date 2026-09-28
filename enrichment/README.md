@@ -117,6 +117,33 @@ a `purpose` string on every scan.
 | `dns_rdap` | domain | domain, organization, email | none | Google DoH (MX) + rdap.org (registration) |
 | `gravatar` | email | full_name, url, account, image | none | Public Gravatar profile JSON |
 | `github` | username, email | full_name, location, organization, url, email, account, image, username | optional token | REST API; token only raises rate limits |
+| `nominatim` | location | geo_point | none | OSM Nominatim geocoding; ≤1 req/s policy honored |
+
+## Location footprint (a bounded "geocreepy")
+
+The `nominatim` module plus `to_geojson` / `render_map_html` (exported from the
+package) are a modern, compliance-bounded successor to Creepy/geocreepy: as location
+strings surface during a scan (e.g. a GitHub/Gravatar profile's "Seattle, WA"), they
+are geocoded to `geo_point` coordinates and can be exported as a GeoJSON
+FeatureCollection or a self-contained Leaflet map. Each mapped point keeps its source
+module, parent identifier, confidence and timestamp. `geo_point_from_coords` folds in
+coordinates you already hold (e.g. EXIF GPS from an image in evidence) onto the same
+map.
+
+```python
+from enrichment import to_geojson, render_map_html, geo_point_from_coords
+findings = result.findings + [geo_point_from_coords(48.8566, 2.3522, label="EXIF", source="exif")]
+open("footprint.html", "w").write(render_map_html(to_geojson(findings), title="footprint"))
+```
+
+`geo_point` is a terminal type (nothing expands it), so geocoding never loops.
+
+**Deliberately out of scope.** Creepy's other half — scraping a target's post history
+across social platforms to harvest per-post geotags and reconstruct their movements
+over time — is a physical-tracking capability, requires scraping sites whose terms
+forbid it, and violates this layer's official-APIs-only charter. It is not built.
+This module maps locations a subject already publishes (or coordinates you already
+hold), behind the same suppression list and audit log as every other module.
 
 ## Usage
 

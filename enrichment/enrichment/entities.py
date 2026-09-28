@@ -34,12 +34,13 @@ class EntityType(str, Enum):
     URL = "url"
     IP_ADDRESS = "ip_address"
     ORGANIZATION = "organization"
-    LOCATION = "location"
+    LOCATION = "location"          # a place string, e.g. "Seattle, WA"
     IMAGE = "image"
     # produced-only fact types
     BREACH = "breach"
     PGP_KEY = "pgp_key"
     ACCOUNT = "account"  # a profile on a named platform, value = "platform:handle"
+    GEO_POINT = "geo_point"  # resolved coordinates, value = "lat,lon"
 
 
 _WS = re.compile(r"\s+")
@@ -83,6 +84,13 @@ def normalize(entity_type: EntityType, value: str) -> str:
     elif entity_type == EntityType.ACCOUNT:
         platform, _, handle = v.partition(":")
         v = f"{platform.strip().lower()}:{handle.strip().lstrip('@').lower()}"
+    elif entity_type == EntityType.GEO_POINT:
+        # Round to ~5 decimals (~1m) so near-identical fixes dedup to one point.
+        try:
+            lat, lon = v.split(",")
+            v = f"{round(float(lat), 5)},{round(float(lon), 5)}"
+        except (ValueError, TypeError):
+            pass
     elif entity_type in (EntityType.URL, EntityType.IMAGE):
         v = v.strip()
     else:

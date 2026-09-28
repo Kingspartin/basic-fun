@@ -20,10 +20,12 @@ from .config import build_dispatcher, build_modules
 from .dispatcher import Dispatcher, ScanResult, ScanSettings
 from .entities import Entity, EntityType, Finding, normalize
 from .modules.base import EnrichmentModule, ModuleConfig
+from .modules.geo import geo_point_from_coords, render_map_html, to_geojson
 
 __all__ = [
     "Entity", "EntityType", "Finding", "normalize",
     "EnrichmentModule", "ModuleConfig",
     "Dispatcher", "ScanResult", "ScanSettings",
     "build_dispatcher", "build_modules",
+    "to_geojson", "render_map_html", "geo_point_from_coords",
 ]

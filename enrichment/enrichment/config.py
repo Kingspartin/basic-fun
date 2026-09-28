@@ -30,6 +30,7 @@ DEFAULT_LIMITS: dict[str, tuple[float, int, int | None]] = {
     "dns_rdap": (10.0, 20, None),
     "gravatar": (5.0, 10, None),
     "github": (1.0, 5, 5000),    # 5000/hr authenticated
+    "nominatim": (1.0, 1, None), # OSM Nominatim policy: <= 1 req/s
 }
 
 

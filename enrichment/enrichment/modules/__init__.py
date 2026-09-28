@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from .base import EnrichmentModule, ModuleConfig
 from .dns_rdap import DnsRdapModule
+from .geo import GeoNominatimModule
 from .gravatar_github import GitHubModule, GravatarModule
 from .hibp import HaveIBeenPwnedModule
 from .hunter import HunterModule
@@ -19,6 +20,7 @@ ALL_MODULES: dict[str, type[EnrichmentModule]] = {
         DnsRdapModule,
         GravatarModule,
         GitHubModule,
+        GeoNominatimModule,
     )
 }
 
