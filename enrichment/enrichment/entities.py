@@ -41,6 +41,8 @@ class EntityType(str, Enum):
     PGP_KEY = "pgp_key"
     ACCOUNT = "account"  # a profile on a named platform, value = "platform:handle"
     GEO_POINT = "geo_point"  # resolved coordinates, value = "lat,lon"
+    SERVICE = "service"      # an exposed service, value = "port/transport product"
+    VULN = "vulnerability"   # a CVE id, value = "CVE-YYYY-NNNN"
 
 
 _WS = re.compile(r"\s+")
@@ -91,6 +93,10 @@ def normalize(entity_type: EntityType, value: str) -> str:
             v = f"{round(float(lat), 5)},{round(float(lon), 5)}"
         except (ValueError, TypeError):
             pass
+    elif entity_type == EntityType.VULN:
+        v = v.strip().upper()
+    elif entity_type in (EntityType.SERVICE, EntityType.IP_ADDRESS):
+        v = _WS.sub(" ", v).strip().lower()
     elif entity_type in (EntityType.URL, EntityType.IMAGE):
         v = v.strip()
     else:

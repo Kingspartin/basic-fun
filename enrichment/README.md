@@ -118,6 +118,23 @@ a `purpose` string on every scan.
 | `gravatar` | email | full_name, url, account, image | none | Public Gravatar profile JSON |
 | `github` | username, email | full_name, location, organization, url, email, account, image, username | optional token | REST API; token only raises rate limits |
 | `nominatim` | location | geo_point | none | OSM Nominatim geocoding; ≤1 req/s policy honored |
+| `shodan` | domain, ip_address | ip_address, domain, organization, location, service, vulnerability | optional | Shodan REST API with a key, else keyless InternetDB; passive index query, no active scanning |
+
+## Attack surface (Shodan-style)
+
+The `shodan` module adds host/infrastructure intelligence the way Shodan's own search
+works — a **passive query of Shodan's index, not an active port scan**. A domain is
+resolved (A/AAAA via Google DoH) to `ip_address` entities; each IP is looked up for
+its open ports/services, reverse-DNS hostnames, org/ISP, geolocation and known CVEs.
+With a Shodan API key it uses the official REST API (per-service product/version
+banners); without a key it uses Shodan's free **InternetDB** endpoint. Discovered
+hostnames feed back as domains and the host's city/country flows into the `nominatim`
+geocoder, so a single scan can go seed → domain → IPs → exposed services + CVEs, with
+the infrastructure plotted alongside identity findings.
+
+There is deliberately no active scanning of hosts (no nmap-style probing of targets
+you may not be authorized to scan) and no key/IP rotation — the module only queries
+Shodan's already-collected data under its API terms.
 
 ## Location footprint (a bounded "geocreepy")
 

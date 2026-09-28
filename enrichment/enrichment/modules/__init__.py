@@ -12,6 +12,7 @@ from .geo import GeoNominatimModule
 from .gravatar_github import GitHubModule, GravatarModule
 from .hibp import HaveIBeenPwnedModule
 from .hunter import HunterModule
+from .shodan import ShodanModule
 
 ALL_MODULES: dict[str, type[EnrichmentModule]] = {
     m.name: m for m in (
@@ -21,6 +22,7 @@ ALL_MODULES: dict[str, type[EnrichmentModule]] = {
         GravatarModule,
         GitHubModule,
         GeoNominatimModule,
+        ShodanModule,
     )
 }
 
