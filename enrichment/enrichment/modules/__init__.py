@@ -12,10 +12,14 @@ from .geo import GeoNominatimModule
 from .gravatar_github import GitHubModule, GravatarModule
 from .hibp import HaveIBeenPwnedModule
 from .hunter import HunterModule
+from .pivots import EmailPivotModule
 from .shodan import ShodanModule
+from .web_sources import (CrtShModule, GitLabModule, HackerNewsModule,
+                          KeybaseModule, WaybackModule, WikipediaModule)
 
 ALL_MODULES: dict[str, type[EnrichmentModule]] = {
     m.name: m for m in (
+        EmailPivotModule,
         HaveIBeenPwnedModule,
         HunterModule,
         DnsRdapModule,
@@ -23,6 +27,12 @@ ALL_MODULES: dict[str, type[EnrichmentModule]] = {
         GitHubModule,
         GeoNominatimModule,
         ShodanModule,
+        CrtShModule,
+        WaybackModule,
+        KeybaseModule,
+        GitLabModule,
+        HackerNewsModule,
+        WikipediaModule,
     )
 }
 

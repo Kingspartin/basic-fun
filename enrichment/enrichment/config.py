@@ -25,6 +25,7 @@ log = logging.getLogger("enrichment.config")
 # Conservative defaults per module: (requests_per_second, burst, daily_quota).
 # Override per deployment/plan.
 DEFAULT_LIMITS: dict[str, tuple[float, int, int | None]] = {
+    "email_pivot": (1000.0, 100, None),  # local, no network
     "hibp": (0.1, 1, 1000),      # HIBP asks for gentle pacing per key
     "hunter": (2.0, 4, 500),     # depends on plan
     "dns_rdap": (10.0, 20, None),
@@ -32,6 +33,12 @@ DEFAULT_LIMITS: dict[str, tuple[float, int, int | None]] = {
     "github": (1.0, 5, 5000),    # 5000/hr authenticated
     "nominatim": (1.0, 1, None), # OSM Nominatim policy: <= 1 req/s
     "shodan": (1.0, 1, None),    # Shodan REST ~1 req/s; InternetDB keyless, be polite
+    "crtsh": (0.5, 1, None),     # crt.sh can be slow/heavy; go gently
+    "wayback": (2.0, 4, None),
+    "keybase": (1.0, 2, None),
+    "gitlab": (2.0, 4, None),
+    "hackernews": (5.0, 10, None),
+    "wikipedia": (5.0, 10, None),
 }
 
 

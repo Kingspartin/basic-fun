@@ -119,6 +119,40 @@ a `purpose` string on every scan.
 | `github` | username, email | full_name, location, organization, url, email, account, image, username | optional token | REST API; token only raises rate limits |
 | `nominatim` | location | geo_point | none | OSM Nominatim geocoding; ≤1 req/s policy honored |
 | `shodan` | domain, ip_address | ip_address, domain, organization, location, service, vulnerability | optional | Shodan REST API with a key, else keyless InternetDB; passive index query, no active scanning |
+| `email_pivot` | email | domain, username | none | Local only; email → its domain (custom domains) + candidate usernames |
+| `crtsh` | domain | domain | none | Subdomains from certificate-transparency logs (crt.sh) |
+| `wayback` | domain, url | url | none | Latest Internet Archive snapshot |
+| `keybase` | username | full_name, location, account, domain | none | Keybase-verified proof graph (cross-platform accounts) |
+| `gitlab` | username | full_name, url | optional | GitLab public user profile |
+| `hackernews` | username | email, url | none | Emails/links in the HN "about" text |
+| `wikipedia` | full_name | url | none | Matching article titles (low confidence; names are ambiguous) |
+
+## Gather everything (one command)
+
+`python -m enrichment.gather <target>` runs the whole thing on a single seed: it
+detects the seed type, builds a dispatcher with every enabled module (keyless ones
+always; HIBP/Hunter/Shodan-REST only when you pass a key), runs one uncapped scan,
+and writes a consolidated dossier plus the footprint map.
+
+```
+python -m enrichment.gather jane@example.com \
+    --purpose "fraud review, case 42" --requester analyst-7 \
+    --md dossier.md --json dossier.json --map footprint.html \
+    --shodan-key "$SHODAN_KEY" --hibp-key "$HIBP_KEY"
+```
+
+From an email seed this chains: email → domain + usernames → (DNS/RDAP, crt.sh
+subdomains, Shodan host intel, Wayback) and (GitHub, GitLab, Keybase, Hacker News,
+Gravatar) → names/accounts/locations → geocoded points. The dossier groups every
+value under Identity / Contact / Usernames & accounts / Web presence / Affiliations /
+Exposure / Infrastructure, each with its confidence and the modules that produced it;
+`build_dossier` / `dossier_markdown` are also importable. `--max-requests 0` (the
+default) removes the per-scan ceiling — the per-module rate limits and quotas still
+apply, so breadth never turns into hammering a provider.
+
+"As much as possible" here means breadth across official/keyless APIs, all behind the
+suppression list and audit log. It does not scrape sites that forbid it, does not
+actively scan hosts, and does not rotate keys or IPs to evade limits.
 
 ## Attack surface (Shodan-style)
 
