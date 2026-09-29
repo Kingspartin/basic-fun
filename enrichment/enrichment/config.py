@@ -26,6 +26,7 @@ log = logging.getLogger("enrichment.config")
 # Override per deployment/plan.
 DEFAULT_LIMITS: dict[str, tuple[float, int, int | None]] = {
     "email_pivot": (1000.0, 100, None),  # local, no network
+    "account_pivot": (1000.0, 100, None),  # local, no network
     "hibp": (0.1, 1, 1000),      # HIBP asks for gentle pacing per key
     "hunter": (2.0, 4, 500),     # depends on plan
     "dns_rdap": (10.0, 20, None),

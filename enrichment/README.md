@@ -120,12 +120,26 @@ a `purpose` string on every scan.
 | `nominatim` | location | geo_point | none | OSM Nominatim geocoding; ≤1 req/s policy honored |
 | `shodan` | domain, ip_address | ip_address, domain, organization, location, service, vulnerability | optional | Shodan REST API with a key, else keyless InternetDB; passive index query, no active scanning |
 | `email_pivot` | email | domain, username | none | Local only; email → its domain (custom domains) + candidate usernames |
+| `account_pivot` | account | username | none | Local only; a discovered `platform:handle` → username to look up on the platform modules |
 | `crtsh` | domain | domain | none | Subdomains from certificate-transparency logs (crt.sh) |
 | `wayback` | domain, url | url | none | Latest Internet Archive snapshot |
 | `keybase` | username | full_name, location, account, domain | none | Keybase-verified proof graph (cross-platform accounts) |
 | `gitlab` | username | full_name, url | optional | GitLab public user profile |
 | `hackernews` | username | email, url | none | Emails/links in the HN "about" text |
 | `wikipedia` | full_name | url | none | Matching article titles (low confidence; names are ambiguous) |
+
+## Recursive expansion
+
+The dispatcher is a breadth-first graph engine: **every entity a module produces is
+fed back into the queue and routed to the modules that watch its type**, out to
+`max_depth` hops. So a name that yields two emails causes *both* emails to be looked
+up; each email's domain and usernames are then looked up in turn, and so on — the
+scan keeps chasing what it finds until nothing new appears or the depth/budget limits
+are hit (dedup on `(type, normalized value)` stops loops and re-queries). The
+`account_pivot` and `email_pivot` modules exist to keep this going: a discovered
+`github:janedoe` account becomes a `janedoe` username lookup; an email becomes its
+domain plus candidate usernames. `gather` defaults to depth 4 and an uncapped request
+budget, so a single seed fans out as far as the sources reach.
 
 ## Gather everything (one command)
 

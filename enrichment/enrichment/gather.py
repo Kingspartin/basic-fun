@@ -70,7 +70,7 @@ def _module_config(args) -> dict:
 
 
 async def run(seed_text: str, *, purpose: str, requester: str = "cli",
-              seed_type: str | None = None, max_depth: int = 3, max_requests: int = 0,
+              seed_type: str | None = None, max_depth: int = 4, max_requests: int = 0,
               workers: int = 8, module_config: dict | None = None,
               http: HttpClient | None = None):
     """Run a full scan and return (ScanResult, dossier_markdown, geojson)."""
@@ -97,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
                    choices=["auto"] + [t.value for t in EntityType])
     p.add_argument("--purpose", required=True, help="stated lawful purpose (audit-logged)")
     p.add_argument("--requester", default="cli", help="requester id (audit-logged)")
-    p.add_argument("--depth", type=int, default=3, help="max hops from the seed")
+    p.add_argument("--depth", type=int, default=4, help="max hops from the seed")
     p.add_argument("--max-requests", type=int, default=0, help="provider-call cap (0 = unlimited)")
     p.add_argument("--workers", type=int, default=8)
     p.add_argument("--md", help="write the Markdown dossier here")

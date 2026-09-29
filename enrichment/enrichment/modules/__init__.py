@@ -12,7 +12,7 @@ from .geo import GeoNominatimModule
 from .gravatar_github import GitHubModule, GravatarModule
 from .hibp import HaveIBeenPwnedModule
 from .hunter import HunterModule
-from .pivots import EmailPivotModule
+from .pivots import AccountPivotModule, EmailPivotModule
 from .shodan import ShodanModule
 from .web_sources import (CrtShModule, GitLabModule, HackerNewsModule,
                           KeybaseModule, WaybackModule, WikipediaModule)
@@ -20,6 +20,7 @@ from .web_sources import (CrtShModule, GitLabModule, HackerNewsModule,
 ALL_MODULES: dict[str, type[EnrichmentModule]] = {
     m.name: m for m in (
         EmailPivotModule,
+        AccountPivotModule,
         HaveIBeenPwnedModule,
         HunterModule,
         DnsRdapModule,
